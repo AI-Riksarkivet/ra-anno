@@ -8,3 +8,4 @@ storybook-static/
 # Reference files (large, not our code)
 .claude/skills/building-pixijs/references/api-reference.md
 llms-full.txt
+anno/

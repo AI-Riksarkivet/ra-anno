@@ -4,6 +4,7 @@
     "npm:@deno/svelte-adapter@~0.1.1": "0.1.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1_@sveltejs+vite-plugin-svelte@5.1.1__svelte@5.54.1__vite@6.4.1_svelte@5.54.1_typescript@5.9.3_vite@6.4.1",
     "npm:@internationalized/date@^3.12.0": "3.12.0",
     "npm:@lucide/svelte@0.561": "0.561.0_svelte@5.54.1",
+    "npm:@sveltejs/kit@*": "2.55.0_@sveltejs+vite-plugin-svelte@5.1.1__svelte@5.54.1__vite@6.4.1_svelte@5.54.1_typescript@5.9.3_vite@6.4.1",
     "npm:@sveltejs/kit@2": "2.55.0_@sveltejs+vite-plugin-svelte@5.1.1__svelte@5.54.1__vite@6.4.1_svelte@5.54.1_typescript@5.9.3_vite@6.4.1",
     "npm:@sveltejs/vite-plugin-svelte@5": "5.1.1_svelte@5.54.1_vite@6.4.1",
     "npm:@tailwindcss/vite@4": "4.2.2_vite@6.4.1",

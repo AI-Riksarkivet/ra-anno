@@ -30,8 +30,8 @@
             <Sidebar.MenuItem>
               <Sidebar.MenuButton>
                 {#snippet child({ props })}
-                  <a href="/datasets/test/doc1/1" {...props}>
-                    <span>Editor (mock)</span>
+                  <a href="/datasets/mock-dataset-001" {...props}>
+                    <span>Browse (mock)</span>
                   </a>
                 {/snippet}
               </Sidebar.MenuButton>
@@ -39,8 +39,8 @@
             <Sidebar.MenuItem>
               <Sidebar.MenuButton>
                 {#snippet child({ props })}
-                  <a href="/test" {...props}>
-                    <span>Canvas Test</span>
+                  <a href="/datasets/mock-dataset-001/doc-1/1" {...props}>
+                    <span>Editor (mock)</span>
                   </a>
                 {/snippet}
               </Sidebar.MenuButton>

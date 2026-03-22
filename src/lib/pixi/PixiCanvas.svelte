@@ -13,12 +13,14 @@
     zoom = $bindable(1),
     panX = $bindable(0),
     panY = $bindable(0),
+    colorFn,
     onready,
   }: {
     children?: Snippet;
     zoom?: number;
     panX?: number;
     panY?: number;
+    colorFn?: (status: string) => number;
     onready?: (ctx: PixiContext) => void;
   } = $props();
 
@@ -61,7 +63,7 @@
       containerEl.appendChild(app.canvas);
 
       imagePlugin = new ImagePlugin(app);
-      arrowPlugin = new ArrowDataPlugin(app);
+      arrowPlugin = new ArrowDataPlugin(app, colorFn);
       interaction = new InteractionManager(app, arrowPlugin);
 
       imagePlugin.canPan = () => interaction.currentTool === "select";

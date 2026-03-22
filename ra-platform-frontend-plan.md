@@ -842,37 +842,37 @@ ra-platform/
 
 ### Completed
 
-| Step | Description | Status |
-|------|-------------|--------|
-| 0 | Project scaffold (SvelteKit 2 + Deno + Tailwind v4 + shadcn-svelte) | **DONE** |
-| 1 | PixiCanvas + image + zoom/pan (WebGPU, isRenderGroup) | **DONE** |
-| 2 | Arrow data → polygons (batch rendering, zero-copy, viewport culling) | **DONE** |
-| 3a | Mock API routes (Arrow IPC streaming GET/POST) | **DONE** |
-| 4 | Drawing tools + selection + edit | **DONE** |
-| 4b | Annotation editing refactor (Tool/Editor separation) | **DONE** |
-| 4c | OpenCV.js tools (Intelligent Scissors + Magnetic Cursor) | **DONE** (code ready, needs image init wiring) |
-| 4d | Multi-select (Ctrl+click) | **DONE** |
-| 4e | Hover highlight, editable text/label, keyboard shortcuts dialog | **DONE** |
+| Step | Description                                                          | Status                                         |
+| ---- | -------------------------------------------------------------------- | ---------------------------------------------- |
+| 0    | Project scaffold (SvelteKit 2 + Deno + Tailwind v4 + shadcn-svelte)  | **DONE**                                       |
+| 1    | PixiCanvas + image + zoom/pan (WebGPU, isRenderGroup)                | **DONE**                                       |
+| 2    | Arrow data → polygons (batch rendering, zero-copy, viewport culling) | **DONE**                                       |
+| 3a   | Mock API routes (Arrow IPC streaming GET/POST)                       | **DONE**                                       |
+| 4    | Drawing tools + selection + edit                                     | **DONE**                                       |
+| 4b   | Annotation editing refactor (Tool/Editor separation)                 | **DONE**                                       |
+| 4c   | OpenCV.js tools (Intelligent Scissors + Magnetic Cursor)             | **DONE** (code ready, needs image init wiring) |
+| 4d   | Multi-select (Ctrl+click)                                            | **DONE**                                       |
+| 4e   | Hover highlight, editable text/label, keyboard shortcuts dialog      | **DONE**                                       |
 
 ### Remaining
 
-| Step | Description | Effort | Depends on | Runs where |
-|------|-------------|--------|------------|------------|
-| **3b** | Flight SQL backend (real Lance data) | 1-2 days | Flight SQL server running | Server |
-| **3c** | Image route (Lance binary columns) | 0.5 day | Step 3b | Server |
-| **3d** | Dataset browser (thumbnail grid, virtual scroll) | 2-3 days | Step 3a (mock) or 3c (real) | Browser |
-| **5a** | SAM segmentation (transformers.js, WebGPU) | 1-2 days | Step 4 | **Browser** (no server) |
-| **5b** | HTR / text recognition (transformers.js, WebGPU) | 1 day | Step 4 | **Browser** (no server) |
-| **5c** | Remote inference (vLLM, SSE streaming) | 1-2 days | vLLM running | Server + Browser |
-| **6a** | Loading states, skeletons, error handling | 1 day | Any | Browser |
-| **6b** | Export to ALTO/COCO format | 1 day | Step 4 | Browser + Server |
-| **6c** | Image preloading (next/prev page) | 0.5 day | Step 3d | Browser |
-| **6d** | Multi-page navigation (arrow keys) | 0.5 day | Step 3d | Browser |
-| **6e** | Arrow polygon zero-copy (direct buffer slice instead of .get(i)) | 0.5 day | Step 3b (proper RecordBatches) | Browser |
-| **6f** | Spatial index for hit testing (Flatbush on annotation bboxes) | 0.5 day | 5000+ annotations per page | Browser |
-| **6g** | Incremental table mutations (avoid full column rebuild) | 1 day | Editing feels slow at scale | Browser |
-| **6h** | Streaming Arrow IPC fetch (when Flight SQL sends proper RecordBatches) | 0.5 day | Step 3b | Browser |
-| **6i** | Wire OpenCV.js tools (initWithImage on page load) | 0.5 day | Step 4c | Browser |
+| Step   | Description                                                            | Effort   | Depends on                     | Runs where              |
+| ------ | ---------------------------------------------------------------------- | -------- | ------------------------------ | ----------------------- |
+| **3b** | Flight SQL backend (real Lance data)                                   | 1-2 days | Flight SQL server running      | Server                  |
+| **3c** | Image route (Lance binary columns)                                     | 0.5 day  | Step 3b                        | Server                  |
+| **3d** | Dataset browser (thumbnail grid, virtual scroll)                       | 2-3 days | Step 3a (mock) or 3c (real)    | Browser                 |
+| **5a** | SAM segmentation (transformers.js, WebGPU)                             | 1-2 days | Step 4                         | **Browser** (no server) |
+| **5b** | HTR / text recognition (transformers.js, WebGPU)                       | 1 day    | Step 4                         | **Browser** (no server) |
+| **5c** | Remote inference (vLLM, SSE streaming)                                 | 1-2 days | vLLM running                   | Server + Browser        |
+| **6a** | Loading states, skeletons, error handling                              | 1 day    | Any                            | Browser                 |
+| **6b** | Export to ALTO/COCO format                                             | 1 day    | Step 4                         | Browser + Server        |
+| **6c** | Image preloading (next/prev page)                                      | 0.5 day  | Step 3d                        | Browser                 |
+| **6d** | Multi-page navigation (arrow keys)                                     | 0.5 day  | Step 3d                        | Browser                 |
+| **6e** | Arrow polygon zero-copy (direct buffer slice instead of .get(i))       | 0.5 day  | Step 3b (proper RecordBatches) | Browser                 |
+| **6f** | Spatial index for hit testing (Flatbush on annotation bboxes)          | 0.5 day  | 5000+ annotations per page     | Browser                 |
+| **6g** | Incremental table mutations (avoid full column rebuild)                | 1 day    | Editing feels slow at scale    | Browser                 |
+| **6h** | Streaming Arrow IPC fetch (when Flight SQL sends proper RecordBatches) | 0.5 day  | Step 3b                        | Browser                 |
+| **6i** | Wire OpenCV.js tools (initWithImage on page load)                      | 0.5 day  | Step 4c                        | Browser                 |
 
 ### What runs where (updated)
 
@@ -906,13 +906,15 @@ DONE ──→ Step 3d (dataset browser, can use mock data)
 Step 6a-6d can be done anytime (polish)
 ```
 
-**Key insight**: Steps 5a and 5b (SAM + HTR) do NOT need a server.
-They run in the browser via transformers.js with WebGPU acceleration.
-Only Step 5c (remote vLLM inference for heavy models) needs a server.
+**Key insight**: Steps 5a and 5b (SAM + HTR) do NOT need a server. They run in
+the browser via transformers.js with WebGPU acceleration. Only Step 5c (remote
+vLLM inference for heavy models) needs a server.
 
 ### Recommended next steps
 
-1. **Step 3d** — Dataset browser (thumbnail grid) — builds the FiftyOne replacement
-2. **Step 5a** — SAM via transformers.js — massive productivity boost for annotators
+1. **Step 3d** — Dataset browser (thumbnail grid) — builds the FiftyOne
+   replacement
+2. **Step 5a** — SAM via transformers.js — massive productivity boost for
+   annotators
 3. **Step 5b** — HTR via transformers.js — auto-transcription of text regions
 4. **Step 3b** — Flight SQL backend — when the server is ready

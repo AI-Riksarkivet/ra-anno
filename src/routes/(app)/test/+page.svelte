@@ -2,6 +2,7 @@
   import PixiCanvas from "$lib/pixi/PixiCanvas.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
+  import { statusColor } from "$lib/utils/color.js";
   import type { PixiContext } from "$lib/pixi/types.js";
 
   let zoom = $state(1);
@@ -42,6 +43,7 @@
       bind:zoom
       bind:panX
       bind:panY
+      colorFn={statusColor}
       onready={(ctx) => {
         handleReady(ctx);
       }}

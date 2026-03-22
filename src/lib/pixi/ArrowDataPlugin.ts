@@ -1,11 +1,17 @@
 import { Application, Container, Graphics } from "pixi.js";
 import type { Table } from "apache-arrow";
-import { STATUS_COLORS, statusColor } from "$lib/utils/color.js";
 import type { ViewportBounds } from "./types.js";
+
+/** Default color function — consumers can override */
+const DEFAULT_COLOR = 0x8b5cf6; // purple
+
+/** Function that maps a status string to a hex color */
+export type ColorFn = (status: string) => number;
 
 export class ArrowDataPlugin {
   private app: Application;
   private container: Container;
+  private colorFn: ColorFn;
   private table: Table | null = null;
   private dirty = false;
 
@@ -28,18 +34,13 @@ export class ArrowDataPlugin {
   // Viewport culling
   private viewportBounds: ViewportBounds | null = null;
 
-  constructor(app: Application) {
+  constructor(app: Application, colorFn?: ColorFn) {
     this.app = app;
+    this.colorFn = colorFn ?? (() => DEFAULT_COLOR);
     this.container = new Container();
     this.container.label = "annotations";
     this.container.cullable = true;
     app.stage.addChild(this.container);
-
-    for (const color of Object.values(STATUS_COLORS)) {
-      const g = new Graphics();
-      this.batchGraphics.set(color, g);
-      this.container.addChild(g);
-    }
 
     this.hoverGraphics = new Graphics();
     this.hoverGraphics.label = "hover";
@@ -103,7 +104,7 @@ export class ArrowDataPlugin {
       }
 
       const status = statusArr?.[i] ?? "prediction";
-      const color = statusColor(String(status));
+      const color = this.colorFn(String(status));
       let group = colorGroups.get(color);
       if (!group) {
         group = [];
@@ -112,11 +113,19 @@ export class ArrowDataPlugin {
       group.push(i);
     }
 
-    // Batch render
-    for (const [color, g] of this.batchGraphics) {
-      g.clear();
-      const rows = colorGroups.get(color);
-      if (!rows || rows.length === 0) continue;
+    // Clear all existing batch graphics
+    for (const g of this.batchGraphics.values()) g.clear();
+
+    // Batch render — create Graphics per color on demand
+    for (const [color, rows] of colorGroups) {
+      let g = this.batchGraphics.get(color);
+      if (!g) {
+        g = new Graphics();
+        this.batchGraphics.set(color, g);
+        // Insert before hover/highlight (which are last children)
+        const insertIdx = Math.max(0, this.container.children.length - 2);
+        this.container.addChildAt(g, insertIdx);
+      }
 
       for (const i of rows) {
         const poly = this.getPolygonSlice(i);

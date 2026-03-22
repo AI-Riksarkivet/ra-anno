@@ -18,6 +18,7 @@
     canRedo = false,
     isDirty = false,
     annotationCount = 0,
+    mode = "edit",
     onToolChange,
     onUndo,
     onRedo,
@@ -28,6 +29,7 @@
     canRedo?: boolean;
     isDirty?: boolean;
     annotationCount?: number;
+    mode?: "view" | "edit";
     onToolChange?: (tool: Tool) => void;
     onUndo?: () => void;
     onRedo?: () => void;
@@ -45,38 +47,40 @@
       <MousePointer2 class="mr-1 h-4 w-4" />
       Select
     </Button>
-    <Button
-      variant={activeTool === "rect" ? "default" : "ghost"}
-      size="sm"
-      onclick={() => onToolChange?.("rect")}
-    >
-      <Square class="mr-1 h-4 w-4" />
-      Rect
-    </Button>
-    <Button
-      variant={activeTool === "polygon" ? "default" : "ghost"}
-      size="sm"
-      onclick={() => onToolChange?.("polygon")}
-    >
-      <Pentagon class="mr-1 h-4 w-4" />
-      Polygon
-    </Button>
-    <Button
-      variant={activeTool === "scissors" ? "default" : "ghost"}
-      size="sm"
-      onclick={() => onToolChange?.("scissors")}
-    >
-      <Scissors class="mr-1 h-4 w-4" />
-      Scissors
-    </Button>
-    <Button
-      variant={activeTool === "magnetic" ? "default" : "ghost"}
-      size="sm"
-      onclick={() => onToolChange?.("magnetic")}
-    >
-      <Magnet class="mr-1 h-4 w-4" />
-      Magnetic
-    </Button>
+    {#if mode === "edit"}
+      <Button
+        variant={activeTool === "rect" ? "default" : "ghost"}
+        size="sm"
+        onclick={() => onToolChange?.("rect")}
+      >
+        <Square class="mr-1 h-4 w-4" />
+        Rect
+      </Button>
+      <Button
+        variant={activeTool === "polygon" ? "default" : "ghost"}
+        size="sm"
+        onclick={() => onToolChange?.("polygon")}
+      >
+        <Pentagon class="mr-1 h-4 w-4" />
+        Polygon
+      </Button>
+      <Button
+        variant={activeTool === "scissors" ? "default" : "ghost"}
+        size="sm"
+        onclick={() => onToolChange?.("scissors")}
+      >
+        <Scissors class="mr-1 h-4 w-4" />
+        Scissors
+      </Button>
+      <Button
+        variant={activeTool === "magnetic" ? "default" : "ghost"}
+        size="sm"
+        onclick={() => onToolChange?.("magnetic")}
+      >
+        <Magnet class="mr-1 h-4 w-4" />
+        Magnetic
+      </Button>
+    {/if}
   </div>
 
   <Separator orientation="vertical" class="mx-1 h-6" />
