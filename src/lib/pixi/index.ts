@@ -1,0 +1,10 @@
+export { default as PixiCanvas } from "./PixiCanvas.svelte";
+export { ArrowDataPlugin } from "./ArrowDataPlugin.js";
+export { ImagePlugin } from "./ImagePlugin.js";
+export { InteractionManager } from "./interaction/InteractionManager.js";
+export { RectTool } from "./tools/RectTool.js";
+export { PolygonTool } from "./tools/PolygonTool.js";
+export { RectEditor } from "./editors/RectEditor.js";
+export { PolygonEditor } from "./editors/PolygonEditor.js";
+export type { PixiContext, Tool, ViewportBounds } from "./types.js";
+export type { CommitShape, InteractionContext } from "./interaction/types.js";

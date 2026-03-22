@@ -1,0 +1,376 @@
+import { Application } from "pixi.js";
+import type { ArrowDataPlugin } from "../ArrowDataPlugin.js";
+import type { Tool as ToolType } from "../types.js";
+import { RectEditor } from "../editors/RectEditor.js";
+import { PolygonEditor } from "../editors/PolygonEditor.js";
+import { MagneticTool } from "../tools/MagneticTool.js";
+import { PolygonTool } from "../tools/PolygonTool.js";
+import { RectTool } from "../tools/RectTool.js";
+import { ScissorsTool } from "../tools/ScissorsTool.js";
+import { isAxisAlignedRect } from "./geometry.js";
+import type {
+  CommitShape,
+  Editor,
+  GeometryUpdate,
+  InteractionContext,
+  Modifiers,
+  Tool,
+} from "./types.js";
+
+export class InteractionManager {
+  private app: Application;
+  private arrowPlugin: ArrowDataPlugin;
+  private tools = new Map<string, Tool>();
+  private activeTool: Tool | null = null;
+  private _toolName: ToolType = "select";
+
+  private rectEditor: RectEditor;
+  private polygonEditor: PolygonEditor;
+  private activeEditor: Editor | null = null;
+
+  private selectedIndex: number | null = null;
+  private selectedSet = new Set<number>();
+  private modifiers: Modifiers = { shift: false, ctrl: false, alt: false };
+
+  private canvasRect: DOMRect | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+
+  // Throttle onChange during drags — skip frames to avoid 60fps Arrow rebuilds
+  private dragFrameCount = 0;
+  private static readonly DRAG_THROTTLE = 3; // emit every 3rd frame
+
+  onCommit?: (shape: CommitShape) => void;
+  onSelect?: (index: number | null) => void;
+  onChange?: (
+    index: number,
+    updates: GeometryUpdate,
+  ) => void;
+
+  constructor(app: Application, arrowPlugin: ArrowDataPlugin) {
+    this.app = app;
+    this.arrowPlugin = arrowPlugin;
+
+    const ctx = this.createContext();
+
+    const rectTool = new RectTool(ctx);
+    rectTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("rect", rectTool);
+
+    const polygonTool = new PolygonTool(ctx);
+    polygonTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("polygon", polygonTool);
+
+    const scissorsTool = new ScissorsTool(ctx);
+    scissorsTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("scissors", scissorsTool);
+
+    const magneticTool = new MagneticTool(ctx);
+    magneticTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("magnetic", magneticTool);
+
+    this.rectEditor = new RectEditor(ctx);
+    this.rectEditor.onChange = (index, updates) =>
+      this.onChange?.(index, updates);
+
+    this.polygonEditor = new PolygonEditor(ctx);
+    this.polygonEditor.onChange = (index, updates) =>
+      this.onChange?.(index, updates);
+
+    this.setupEvents();
+  }
+
+  get currentTool(): ToolType {
+    return this._toolName;
+  }
+
+  setTool(tool: ToolType): void {
+    this.activeTool?.cancel();
+    this._toolName = tool;
+    this.activeTool = tool === "select" ? null : (this.tools.get(tool) ?? null);
+
+    // Set cursor for the active tool
+    this.canvas.style.cursor = this.activeTool ? "crosshair" : "default";
+  }
+
+  /** Update modifier key state — called by the page component's keyboard handler */
+  setModifiers(shift: boolean, ctrl: boolean, alt: boolean): void {
+    this.modifiers.shift = shift;
+    this.modifiers.ctrl = ctrl;
+    this.modifiers.alt = alt;
+  }
+
+  select(index: number | null, addToSelection = false): void {
+    this.activeEditor?.detach();
+    this.activeEditor = null;
+    this.arrowPlugin.hover(null);
+
+    if (addToSelection && index !== null) {
+      // Ctrl+click: toggle in selection set
+      if (this.selectedSet.has(index)) {
+        this.selectedSet.delete(index);
+        index = this.selectedSet.size > 0
+          ? [...this.selectedSet][this.selectedSet.size - 1]
+          : null;
+      } else {
+        this.selectedSet.add(index);
+      }
+    } else if (index !== null) {
+      // Normal click: replace selection
+      this.selectedSet.clear();
+      this.selectedSet.add(index);
+    } else {
+      this.selectedSet.clear();
+    }
+
+    this.selectedIndex = index;
+
+    // Attach editor to the primary selected annotation
+    if (index !== null) {
+      const { x, y, w, h, polygon } = this.arrowPlugin.getGeometry(index);
+
+      if (polygon && polygon.length >= 6 && !isAxisAlignedRect(polygon)) {
+        this.polygonEditor.attach(index, x, y, w, h, polygon);
+        this.activeEditor = this.polygonEditor;
+      } else {
+        this.rectEditor.attach(index, x, y, w, h, null);
+        this.activeEditor = this.rectEditor;
+      }
+    }
+
+    this.arrowPlugin.highlight(index);
+    this.onSelect?.(index);
+  }
+
+  getSelectedIndex(): number | null {
+    return this.selectedIndex;
+  }
+
+  getSelectedSet(): ReadonlySet<number> {
+    return this.selectedSet;
+  }
+
+  cancel(): void {
+    this.activeTool?.cancel();
+    this.activeEditor?.detach();
+    this.activeEditor = null;
+    this.selectedIndex = null;
+    this.arrowPlugin.highlight(null);
+  }
+
+  updateHandles(): void {
+    this.activeEditor?.renderHandles();
+  }
+
+  /** Convert selected rect to polygon (enables vertex editing) */
+  convertToPolygon(): boolean {
+    if (this.selectedIndex === null) return false;
+    if (this.activeEditor !== this.rectEditor) return false;
+
+    const { x, y, w, h } = this.arrowPlugin.getGeometry(this.selectedIndex);
+    const polygon = [x, y, x + w, y, x + w, y + h, x, y + h];
+
+    // Switch to polygon editor
+    this.rectEditor.detach();
+    this.polygonEditor.attach(this.selectedIndex, x, y, w, h, polygon);
+    this.activeEditor = this.polygonEditor;
+
+    // Emit change so the store gets the polygon points
+    this.onChange?.(this.selectedIndex, { x, y, w, h, polygon });
+    return true;
+  }
+
+  /** Forward key events from page component — tools handle Escape, Backspace */
+  handleKeyDown(key: string): void {
+    this.activeTool?.onKeyDown(key);
+  }
+
+  destroy(): void {
+    this.removeEvents();
+    this.resizeObserver?.disconnect();
+    for (const tool of this.tools.values()) tool.destroy();
+    this.rectEditor.destroy();
+    this.polygonEditor.destroy();
+  }
+
+  // --- Private ---
+
+  private createContext(): InteractionContext {
+    return {
+      app: this.app,
+      screenToWorld: (sx, sy) => this.screenToWorld(sx, sy),
+      worldToScreen: (wx, wy) => {
+        const stage = this.app.stage;
+        return {
+          x: wx * stage.scale.x + stage.position.x,
+          y: wy * stage.scale.y + stage.position.y,
+        };
+      },
+      getViewportScale: () => this.app.stage.scale.x,
+      getModifiers: () => this.modifiers,
+      setCursor: (cursor: string) => {
+        this.canvas.style.cursor = cursor;
+      },
+    };
+  }
+
+  /** Single source of truth for coordinate transform */
+  private screenToWorld(
+    sx: number,
+    sy: number,
+  ): { x: number; y: number } {
+    const stage = this.app.stage;
+    return {
+      x: (sx - stage.position.x) / stage.scale.x,
+      y: (sy - stage.position.y) / stage.scale.y,
+    };
+  }
+
+  private get canvas(): HTMLCanvasElement {
+    return this.app.canvas as HTMLCanvasElement;
+  }
+
+  private updateCanvasRect(): void {
+    this.canvasRect = this.canvas.getBoundingClientRect();
+  }
+
+  private worldCoords(e: PointerEvent | MouseEvent): {
+    x: number;
+    y: number;
+  } {
+    if (!this.canvasRect) this.updateCanvasRect();
+    const rect = this.canvasRect!;
+    return this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+  }
+
+  private throttledChange(
+    index: number,
+    updates: GeometryUpdate,
+  ): void {
+    this.dragFrameCount++;
+    if (this.dragFrameCount % InteractionManager.DRAG_THROTTLE === 0) {
+      this.onChange?.(index, updates);
+    }
+  }
+
+  private setupEvents(): void {
+    // Capture phase — fires BEFORE ImagePlugin's bubble-phase handlers
+    // so we can stopImmediatePropagation to block panning during edits/draws
+    this.canvas.addEventListener("pointerdown", this.onPointerDown, true);
+    this.canvas.addEventListener("pointermove", this.onPointerMove, true);
+    this.canvas.addEventListener("pointerup", this.onPointerUp, true);
+    this.canvas.addEventListener("dblclick", this.onDoubleClick, true);
+
+    this.updateCanvasRect();
+    this.resizeObserver = new ResizeObserver(() => this.updateCanvasRect());
+    this.resizeObserver.observe(this.canvas);
+  }
+
+  private removeEvents(): void {
+    this.canvas.removeEventListener("pointerdown", this.onPointerDown, true);
+    this.canvas.removeEventListener("pointermove", this.onPointerMove, true);
+    this.canvas.removeEventListener("pointerup", this.onPointerUp, true);
+    this.canvas.removeEventListener("dblclick", this.onDoubleClick, true);
+  }
+
+  private onPointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
+    const { x, y } = this.worldCoords(e);
+
+    // 1. Editor handle drag
+    if (this.activeEditor?.isAttached()) {
+      const handle = this.activeEditor.hitTestHandle(x, y);
+      if (handle) {
+        e.stopImmediatePropagation();
+        this.dragFrameCount = 0;
+        this.activeEditor.startDrag(handle, x, y);
+        return;
+      }
+    }
+
+    // 2. Drawing tool
+    if (this.activeTool) {
+      e.stopImmediatePropagation();
+      this.activeTool.onPointerDown(x, y);
+      return;
+    }
+
+    // 3. Select tool — click to select, then drag handles/body on next interaction
+    if (this._toolName === "select") {
+      const hit = this.arrowPlugin.getAnnotationAtPoint(x, y);
+      if (hit !== null) {
+        e.stopImmediatePropagation();
+        const addToSelection = this.modifiers.ctrl;
+        this.select(hit, addToSelection);
+      } else {
+        this.select(null);
+      }
+    }
+  };
+
+  private onPointerMove = (e: PointerEvent): void => {
+    // Early return: nothing active and no editor → skip coord calculation
+    const editorDragging = this.activeEditor?.isDragging();
+    const hasActiveTool = this.activeTool !== null;
+    const editorAttached = this.activeEditor?.isAttached();
+
+    if (!editorDragging && !hasActiveTool && !editorAttached) {
+      if (this._toolName === "select") {
+        const { x, y } = this.worldCoords(e);
+        const hit = this.arrowPlugin.getAnnotationAtPoint(x, y);
+        this.canvas.style.cursor = hit !== null ? "pointer" : "default";
+        // Hover highlight — show light fill before clicking
+        this.arrowPlugin.hover(hit !== this.selectedIndex ? hit : null);
+      }
+      return;
+    }
+
+    const { x, y } = this.worldCoords(e);
+
+    if (editorDragging) {
+      e.stopPropagation(); // block ImagePlugin pan
+      this.activeEditor!.drag(x, y);
+      return;
+    }
+
+    if (hasActiveTool) {
+      e.stopPropagation(); // block ImagePlugin pan
+      this.activeTool!.onPointerMove(x, y);
+      return;
+    }
+
+    // Editor attached but not dragging — show handle cursors on hover
+    if (editorAttached) {
+      const handle = this.activeEditor!.hitTestHandle(x, y);
+      if (!handle) {
+        const hit = this.arrowPlugin.getAnnotationAtPoint(x, y);
+        this.canvas.style.cursor = hit !== null ? "pointer" : "default";
+      }
+    }
+  };
+
+  private onPointerUp = (e: PointerEvent): void => {
+    if (this.activeEditor?.isDragging()) {
+      e.stopPropagation();
+      const { x, y } = this.worldCoords(e);
+      this.activeEditor.drag(x, y);
+      this.activeEditor.endDrag();
+      // Final onChange — emit without throttle
+      this.dragFrameCount = 0;
+      return;
+    }
+
+    if (this.activeTool) {
+      e.stopPropagation();
+      const { x, y } = this.worldCoords(e);
+      this.activeTool.onPointerUp(x, y);
+    }
+  };
+
+  private onDoubleClick = (e: MouseEvent): void => {
+    if (this.activeTool) {
+      e.stopImmediatePropagation();
+      const { x, y } = this.worldCoords(e);
+      this.activeTool.onDoubleClick(x, y);
+    }
+  };
+}
