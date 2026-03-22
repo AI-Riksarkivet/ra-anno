@@ -139,7 +139,7 @@
   });
 </script>
 
-<div class="flex h-[calc(100vh-3rem)] flex-col">
+<div class="flex h-full flex-col">
   <!-- Header bar -->
   <div class="flex items-center gap-3 border-b px-4 py-2">
     <Grid2x2 class="h-5 w-5 text-muted-foreground" />

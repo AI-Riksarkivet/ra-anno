@@ -11,6 +11,8 @@
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import SaveIcon from "@lucide/svelte/icons/save";
+  import Eye from "@lucide/svelte/icons/eye";
+  import Pencil from "@lucide/svelte/icons/pencil";
 
   let {
     activeTool = "select",
@@ -20,6 +22,7 @@
     annotationCount = 0,
     mode = "edit",
     onToolChange,
+    onToggleMode,
     onUndo,
     onRedo,
     onSave,
@@ -31,6 +34,7 @@
     annotationCount?: number;
     mode?: "view" | "edit";
     onToolChange?: (tool: Tool) => void;
+    onToggleMode?: () => void;
     onUndo?: () => void;
     onRedo?: () => void;
     onSave?: () => void;
@@ -123,7 +127,23 @@
       <Badge variant="outline" class="text-amber-600">unsaved</Badge>
     {/if}
     {#if annotationCount > 0}
-      <Badge variant="secondary">{annotationCount} annotations</Badge>
+      <Badge variant="secondary">{annotationCount}</Badge>
     {/if}
+
+    <Separator orientation="vertical" class="mx-1 h-6" />
+
+    <Button
+      variant={mode === "edit" ? "default" : "outline"}
+      size="sm"
+      onclick={() => onToggleMode?.()}
+    >
+      {#if mode === "view"}
+        <Eye class="mr-1 h-4 w-4" />
+        View
+      {:else}
+        <Pencil class="mr-1 h-4 w-4" />
+        Edit
+      {/if}
+    </Button>
   </div>
 </div>

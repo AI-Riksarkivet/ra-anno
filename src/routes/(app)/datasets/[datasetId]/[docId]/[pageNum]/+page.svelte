@@ -1,30 +1,14 @@
 <script lang="ts">
-  import { page } from "$app/state";
   import PixiCanvas from "$lib/pixi/PixiCanvas.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import AnnotationSidebar from "$lib/components/AnnotationSidebar.svelte";
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
   import { statusColor } from "$lib/utils/color.js";
-  import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-  } from "$lib/components/ui/breadcrumb/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import Eye from "@lucide/svelte/icons/eye";
-  import Pencil from "@lucide/svelte/icons/pencil";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { undoStack } from "$lib/stores/undo.svelte.js";
   import type { PixiContext } from "$lib/pixi/types.js";
   import type { Tool } from "$lib/pixi/types.js";
   import type { AnnotationStatus } from "$lib/types/schemas.js";
-
-  const datasetId = $derived(page.params.datasetId);
-  const docId = $derived(page.params.docId);
-  const pageNum = $derived(page.params.pageNum);
 
   let mode = $state<"view" | "edit">("view");
 
@@ -199,46 +183,11 @@
   }}
 />
 
-<div class="flex h-[calc(100vh-3rem)] flex-col">
-  <div class="flex items-center justify-between border-b px-3 py-1.5">
-    <Breadcrumb>
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink href="/datasets">Datasets</BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink href="/datasets/{datasetId}">{datasetId}</BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink href="/datasets/{datasetId}/{docId}">{docId}</BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbPage>p.{pageNum}</BreadcrumbPage>
-        </BreadcrumbItem>
-      </BreadcrumbList>
-    </Breadcrumb>
-
-    <Button
-      variant={mode === "edit" ? "default" : "outline"}
-      size="sm"
-      onclick={handleToggleMode}
-    >
-      {#if mode === "view"}
-        <Eye class="mr-1 h-4 w-4" />
-        View
-      {:else}
-        <Pencil class="mr-1 h-4 w-4" />
-        Edit
-      {/if}
-    </Button>
-  </div>
-
+<div class="flex h-full flex-col">
   <Toolbar
-    {activeTool}
     {mode}
+    onToggleMode={handleToggleMode}
+    {activeTool}
     canUndo={undoStack.canUndo}
     canRedo={undoStack.canRedo}
     isDirty={annotationStore.isDirty(pageId)}
