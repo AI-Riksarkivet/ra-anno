@@ -42,6 +42,7 @@ export class InteractionManager {
     index: number,
     updates: GeometryUpdate,
   ) => void;
+  onDirtyChange?: (hasDirtyEdits: boolean) => void;
 
   constructor(app: Application, arrowPlugin: ArrowDataPlugin) {
     this.app = app;
@@ -364,6 +365,7 @@ export class InteractionManager {
           });
           // Re-sync the batch renderer to show the updated geometry
           this.arrowPlugin.sync();
+          this.onDirtyChange?.(true);
         }
       }
       return;

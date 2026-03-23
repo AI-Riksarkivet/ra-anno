@@ -18,6 +18,7 @@
   let activeTool = $state<Tool>("select");
   let selectedIndex = $state<number | null>(null);
   let pixiCtx = $state<PixiContext | null>(null);
+  let hasGeometryEdits = $state(false);
 
   const pageId = "mock-page-001";
 
@@ -74,6 +75,11 @@
       selectedIndex = index;
     };
 
+    // Dirty overlay changes
+    ctx.plugins.interaction.onDirtyChange = (dirty) => {
+      hasGeometryEdits = dirty;
+    };
+
     // Editor handle drags → dirty overlay (NO Arrow table rebuild)
     // Arrow table only rebuilt on Save
   }
@@ -118,6 +124,7 @@
         });
       }
       pixiCtx.plugins.arrow.clearOverrides();
+      hasGeometryEdits = false;
     }
     await annotationStore.save(pageId);
   }
@@ -194,24 +201,42 @@
 />
 
 <div class="flex h-full">
-  <!-- Left: vertical toolbar -->
+  <!-- Left: vertical toolbar (edit mode only) -->
+  {#if mode === "edit"}
   <Toolbar
     {mode}
     onToggleMode={handleToggleMode}
     {activeTool}
     canUndo={undoStack.canUndo}
     canRedo={undoStack.canRedo}
-    isDirty={annotationStore.isDirty(pageId)}
+    isDirty={annotationStore.isDirty(pageId) || hasGeometryEdits}
     annotationCount={table?.numRows ?? 0}
     onToolChange={handleToolChange}
     onUndo={handleUndo}
     onRedo={handleRedo}
     onSave={handleSave}
   />
+  {/if}
 
-  <!-- Center: canvas -->
+  <!-- Center: canvas + floating controls -->
   <div class="relative flex-1">
     <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
+
+    <!-- Floating view/edit toggle -->
+    <div class="absolute left-2 top-2 z-10">
+      <button
+        class="flex h-8 items-center gap-1.5 rounded-md border bg-background/90 px-2.5 text-xs shadow-sm backdrop-blur-sm hover:bg-accent"
+        onclick={handleToggleMode}
+      >
+        {#if mode === "view"}
+          <span class="h-2 w-2 rounded-full bg-green-500"></span>
+          View
+        {:else}
+          <span class="h-2 w-2 rounded-full bg-blue-500"></span>
+          Edit
+        {/if}
+      </button>
+    </div>
   </div>
 
   <!-- Right: annotation sidebar -->
