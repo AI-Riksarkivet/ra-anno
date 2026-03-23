@@ -1,16 +1,73 @@
 import {
+  Schema,
   type Table,
+  Table as ArrowTable,
   tableFromArrays,
   tableFromIPC,
   tableToIPC,
 } from "apache-arrow";
 import { undoStack } from "./undo.svelte.js";
 
+/** Extract specific rows from a table into a new table */
+function extractRows(table: Table, indices: number[]): Table {
+  if (indices.length === 0) return tableFromArrays({});
+  const cols: Record<string, unknown[]> = {};
+  for (const field of table.schema.fields) {
+    const col = table.getChild(field.name)!;
+    const isListCol = field.name === "polygon";
+    const arr: unknown[] = new Array(indices.length);
+    for (let j = 0; j < indices.length; j++) {
+      const i = indices[j];
+      if (isListCol) {
+        const val = col.get(i);
+        if (val && val.length > 0) {
+          const plain = new Array(val.length);
+          for (let k = 0; k < val.length; k++) plain[k] = val.get(k);
+          arr[j] = plain;
+        } else {
+          arr[j] = null;
+        }
+      } else {
+        arr[j] = col.get(i);
+      }
+    }
+    cols[field.name] = arr;
+  }
+  return tableFromArrays(cols);
+}
+
+/** Rebuild a table, preserving schema metadata from the original */
+function rebuildTable(
+  existing: Table,
+  cols: Record<string, unknown[]>,
+): Table {
+  const raw = tableFromArrays(cols);
+  // Preserve schema metadata (page-level info) that tableFromArrays drops
+  if (existing.schema.metadata.size > 0) {
+    const schemaWithMeta = new Schema(
+      raw.schema.fields,
+      existing.schema.metadata,
+    );
+    return new ArrowTable(schemaWithMeta, raw.batches);
+  }
+  return raw;
+}
+
 class AnnotationStore {
   // $state.raw — Arrow Tables are large, only reassigned, never mutated
   private _tables = $state.raw<Record<string, Table>>({});
   private _dirty = $state<Record<string, boolean>>({});
   private _loading = $state<Record<string, boolean>>({});
+
+  // Version tracking: ETag from server, used for OCC
+  private _versions = $state<Record<string, string>>({});
+
+  // Delta tracking: which row indices have been modified since last save
+  private _dirtyRows = $state<Record<string, Set<number>>>({});
+  // Rows that were appended (not in the original server data)
+  private _appendedRows = $state<Record<string, Set<number>>>({});
+  // Row IDs that were deleted
+  private _deletedIds = $state<Record<string, Set<string>>>({});
 
   table(pageId: string): Table | null {
     return this._tables[pageId] ?? null;
@@ -22,6 +79,28 @@ class AnnotationStore {
 
   isLoading(pageId: string): boolean {
     return this._loading[pageId] ?? false;
+  }
+
+  version(pageId: string): string | null {
+    return this._versions[pageId] ?? null;
+  }
+
+  private trackDirtyRow(pageId: string, index: number): void {
+    const set = this._dirtyRows[pageId] ?? new Set();
+    set.add(index);
+    this._dirtyRows = { ...this._dirtyRows, [pageId]: set };
+  }
+
+  private trackDirtyRows(pageId: string, indices: Iterable<number>): void {
+    const set = this._dirtyRows[pageId] ?? new Set();
+    for (const i of indices) set.add(i);
+    this._dirtyRows = { ...this._dirtyRows, [pageId]: set };
+  }
+
+  private clearDelta(pageId: string): void {
+    this._dirtyRows = { ...this._dirtyRows, [pageId]: new Set() };
+    this._appendedRows = { ...this._appendedRows, [pageId]: new Set() };
+    this._deletedIds = { ...this._deletedIds, [pageId]: new Set() };
   }
 
   /**
@@ -41,12 +120,17 @@ class AnnotationStore {
       throw new Error(`Failed to load annotations: ${res.status}`);
     }
 
-    // If no body stream (e.g. 304, or browser doesn't support), fall back to batch
+    // Store server version from ETag
+    const etag = res.headers.get("ETag") ?? "";
+    this._versions = { ...this._versions, [pageId]: etag };
+
+    // If no body stream, fall back to batch
     if (!res.body) {
       const buffer = await res.arrayBuffer();
       const table = tableFromIPC(new Uint8Array(buffer));
       this._tables = { ...this._tables, [pageId]: table };
       this._loading = { ...this._loading, [pageId]: false };
+      this.clearDelta(pageId);
       return table;
     }
 
@@ -62,13 +146,10 @@ class AnnotationStore {
       chunks.push(value);
       totalLen += value.length;
 
-      // Try to parse accumulated bytes as Arrow IPC
-      // tableFromIPC succeeds once we have at least one complete RecordBatch
       try {
         const combined = concatBytes(chunks, totalLen);
         const table = tableFromIPC(combined);
         if (table.numRows > 0) {
-          // Update reactively — $effect triggers canvas sync
           this._tables = { ...this._tables, [pageId]: table };
         }
       } catch {
@@ -81,6 +162,7 @@ class AnnotationStore {
     const table = tableFromIPC(combined);
     this._tables = { ...this._tables, [pageId]: table };
     this._loading = { ...this._loading, [pageId]: false };
+    this.clearDelta(pageId);
     return table;
   }
 
@@ -95,6 +177,12 @@ class AnnotationStore {
       cols[field.name] = [row[field.name] ?? null];
     }
     const updated = existing.concat(tableFromArrays(cols));
+    const newIndex = updated.numRows - 1;
+
+    // Track as appended
+    const appended = this._appendedRows[pageId] ?? new Set();
+    appended.add(newIndex);
+    this._appendedRows = { ...this._appendedRows, [pageId]: appended };
 
     this._tables = { ...this._tables, [pageId]: updated };
     this._dirty = { ...this._dirty, [pageId]: true };
@@ -115,9 +203,6 @@ class AnnotationStore {
     for (const field of existing.schema.fields) {
       const col = existing.getChild(field.name)!;
       const n = existing.numRows;
-
-      // For list columns (e.g. polygon), we must convert each row individually
-      // because col.toArray() returns Arrow Vectors, not plain arrays
       const isListCol = field.name === "polygon";
 
       const arr: unknown[] = new Array(n);
@@ -125,7 +210,6 @@ class AnnotationStore {
         if (i === rowIndex && field.name in updates) {
           arr[i] = updates[field.name];
         } else if (isListCol) {
-          // Convert Arrow Vector row to plain number array
           const val = col.get(i);
           if (val && val.length > 0) {
             const plain = new Array(val.length);
@@ -141,9 +225,10 @@ class AnnotationStore {
       cols[field.name] = arr;
     }
 
-    const updated = tableFromArrays(cols);
+    const updated = rebuildTable(existing, cols);
     this._tables = { ...this._tables, [pageId]: updated };
     this._dirty = { ...this._dirty, [pageId]: true };
+    this.trackDirtyRow(pageId, rowIndex);
     return updated;
   }
 
@@ -184,9 +269,10 @@ class AnnotationStore {
       cols[field.name] = arr;
     }
 
-    const updated = tableFromArrays(cols);
+    const updated = rebuildTable(existing, cols);
     this._tables = { ...this._tables, [pageId]: updated };
     this._dirty = { ...this._dirty, [pageId]: true };
+    this.trackDirtyRows(pageId, updatesMap.keys());
     return updated;
   }
 
@@ -195,6 +281,16 @@ class AnnotationStore {
     if (!existing || rowIndex < 0 || rowIndex >= existing.numRows) return null;
 
     undoStack.push(existing);
+
+    // Track the deleted annotation's ID for the server
+    const deletedId = String(
+      existing.getChild("id")?.get(rowIndex) ?? "",
+    );
+    if (deletedId) {
+      const deleted = this._deletedIds[pageId] ?? new Set();
+      deleted.add(deletedId);
+      this._deletedIds = { ...this._deletedIds, [pageId]: deleted };
+    }
 
     const n = existing.numRows;
     const cols: Record<string, unknown[]> = {};
@@ -220,7 +316,27 @@ class AnnotationStore {
       cols[field.name] = dst;
     }
 
-    const updated = tableFromArrays(cols);
+    // Shift dirty row indices above the deleted row down by 1
+    const dirtyRows = this._dirtyRows[pageId];
+    if (dirtyRows) {
+      const shifted = new Set<number>();
+      for (const idx of dirtyRows) {
+        if (idx < rowIndex) shifted.add(idx);
+        else if (idx > rowIndex) shifted.add(idx - 1);
+      }
+      this._dirtyRows = { ...this._dirtyRows, [pageId]: shifted };
+    }
+    const appended = this._appendedRows[pageId];
+    if (appended) {
+      const shifted = new Set<number>();
+      for (const idx of appended) {
+        if (idx < rowIndex) shifted.add(idx);
+        else if (idx > rowIndex) shifted.add(idx - 1);
+      }
+      this._appendedRows = { ...this._appendedRows, [pageId]: shifted };
+    }
+
+    const updated = rebuildTable(existing, cols);
     this._tables = { ...this._tables, [pageId]: updated };
     this._dirty = { ...this._dirty, [pageId]: true };
     return updated;
@@ -254,18 +370,57 @@ class AnnotationStore {
     const table = this._tables[pageId];
     if (!table) throw new Error("No table to save");
 
-    const ipc = tableToIPC(table, "stream");
+    // Build delta: only rows that changed or were appended
+    const dirtyRows = this._dirtyRows[pageId] ?? new Set();
+    const appendedRows = this._appendedRows[pageId] ?? new Set();
+    const deletedIds = this._deletedIds[pageId] ?? new Set();
+    const allDirtyIndices = [...new Set([...dirtyRows, ...appendedRows])];
+
+    // If we have a delta, send only changed rows. Otherwise send full table.
+    const hasDeltas = allDirtyIndices.length > 0 || deletedIds.size > 0;
+    const ipc = hasDeltas && allDirtyIndices.length > 0
+      ? tableToIPC(extractRows(table, allDirtyIndices), "stream")
+      : hasDeltas
+      ? new Uint8Array(0) // only deletes, no row data
+      : tableToIPC(table, "stream"); // fallback: full table
+
+    const method = hasDeltas ? "PATCH" : "POST";
+    const headers: Record<string, string> = {
+      "Content-Type": "application/vnd.apache.arrow.stream",
+    };
+
+    // OCC: send the version we loaded from
+    const loadedVersion = this._versions[pageId];
+    if (loadedVersion) {
+      headers["If-Match"] = loadedVersion;
+    }
+
+    // Include deleted IDs as a header (comma-separated)
+    if (deletedIds.size > 0) {
+      headers["X-Deleted-Ids"] = [...deletedIds].join(",");
+    }
+
     const res = await fetch(`/api/annotations/${pageId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/vnd.apache.arrow.stream" },
+      method,
+      headers,
       body: ipc as unknown as BodyInit,
     });
 
+    if (res.status === 409) {
+      throw new Error(
+        "Conflict: data was modified by another user. Please reload.",
+      );
+    }
     if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+
+    // Update version from response
+    const newVersion = res.headers.get("ETag") ?? "";
+    this._versions = { ...this._versions, [pageId]: newVersion };
 
     const fresh = tableFromIPC(new Uint8Array(await res.arrayBuffer()));
     this._tables = { ...this._tables, [pageId]: fresh };
     this._dirty = { ...this._dirty, [pageId]: false };
+    this.clearDelta(pageId);
     undoStack.clear();
     return fresh;
   }
