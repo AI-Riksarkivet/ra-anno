@@ -36,6 +36,9 @@
   async function handleReady(ctx: PixiContext) {
     pixiCtx = ctx;
 
+    // Init mode — view by default, no editing until toggled
+    ctx.plugins.interaction.setEditMode(mode === "edit");
+
     await ctx.plugins.image.load(`/api/images/${pageId}`);
     await annotationStore.load(pageId);
 

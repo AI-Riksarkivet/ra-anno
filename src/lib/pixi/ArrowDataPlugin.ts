@@ -248,40 +248,29 @@ export class ArrowDataPlugin {
     this.hoverGraphics.clear();
     if (index === null || !this.table) return;
 
-    const poly = this.getPolygonSlice(index);
-    if (poly && poly.length >= 6) {
-      this.hoverGraphics.poly(poly, true);
+    const geo = this.getGeometry(index);
+    if (geo.polygon && geo.polygon.length >= 6) {
+      this.hoverGraphics.poly(geo.polygon, true);
     } else {
-      this.hoverGraphics.rect(
-        this.xArr[index],
-        this.yArr[index],
-        this.wArr[index],
-        this.hArr[index],
-      );
+      this.hoverGraphics.rect(geo.x, geo.y, geo.w, geo.h);
     }
-    this.hoverGraphics.fill({ color: 0x3b82f6, alpha: 0.08 });
-    this.hoverGraphics.stroke({ color: 0x3b82f6, width: 1.5 });
+    this.hoverGraphics.fill({ color: 0x3b82f6, alpha: 0.05 });
+    this.hoverGraphics.stroke({ color: 0x3b82f6, width: 1, alpha: 0.6 });
   }
 
-  /** Strong selection highlight */
+  /** Selection highlight */
   highlight(index: number | null): void {
     this.highlightGraphics.clear();
     if (index === null || !this.table) return;
 
-    const poly = this.getPolygonSlice(index);
-    if (poly && poly.length >= 6) {
-      this.highlightGraphics.poly(poly, true);
+    const geo = this.getGeometry(index);
+    if (geo.polygon && geo.polygon.length >= 6) {
+      this.highlightGraphics.poly(geo.polygon, true);
     } else {
-      this.highlightGraphics.rect(
-        this.xArr[index],
-        this.yArr[index],
-        this.wArr[index],
-        this.hArr[index],
-      );
+      this.highlightGraphics.rect(geo.x, geo.y, geo.w, geo.h);
     }
-
-    this.highlightGraphics.stroke({ color: 0xffffff, width: 4 });
-    this.highlightGraphics.stroke({ color: 0x000000, width: 2 });
+    this.highlightGraphics.fill({ color: 0x3b82f6, alpha: 0.06 });
+    this.highlightGraphics.stroke({ color: 0x3b82f6, width: 1.5 });
   }
 
   getAnnotationAtPoint(x: number, y: number): number | null {
