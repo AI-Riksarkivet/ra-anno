@@ -21,6 +21,7 @@ export interface ViewportBounds {
 
 export type Tool =
   | "select"
+  | "pan"
   | "rect"
   | "polygon"
   | "scissors"

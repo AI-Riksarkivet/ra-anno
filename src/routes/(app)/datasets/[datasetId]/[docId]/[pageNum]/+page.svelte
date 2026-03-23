@@ -5,7 +5,6 @@
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
   import { statusColor } from "$lib/utils/color.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
-  import { undoStack } from "$lib/stores/undo.svelte.js";
   import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import { setContext } from "svelte";
   import type { PixiContext } from "$lib/pixi/types.js";
@@ -175,10 +174,10 @@
   }
 
   function handleDelete(index: number) {
-    // Adjust dirty overrides before delete — indices above shift down
     pixiCtx?.plugins.arrow.adjustOverridesForDelete(index);
     annotationStore.deleteLocal(pageId, index);
     selectedIndex = null;
+    selectedSet = new Set();
     pixiCtx?.plugins.interaction.cancel();
   }
 </script>
@@ -197,22 +196,24 @@
       pixiCtx?.plugins.interaction.setTool("select");
     }
     if (e.key === "1") handleToolChange("select");
-    if (e.key === "2") handleToolChange("rect");
-    if (e.key === "3") handleToolChange("polygon");
-    if (e.key === "4") handleToolChange("scissors");
-    if (e.key === "5") handleToolChange("magnetic");
     if (e.key === "6") handleToolChange("lasso");
+    if (mode === "edit") {
+      if (e.key === "2") handleToolChange("rect");
+      if (e.key === "3") handleToolChange("polygon");
+      if (e.key === "4") handleToolChange("scissors");
+      if (e.key === "5") handleToolChange("magnetic");
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
       e.preventDefault();
-      handleUndo();
+      if (mode === "edit") handleUndo();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
       e.preventDefault();
-      handleRedo();
+      if (mode === "edit") handleRedo();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "s") {
       e.preventDefault();
-      handleSave();
+      if (mode === "edit") handleSave();
     }
     if (e.key === "Delete" || e.key === "Backspace") {
       // Only delete annotation in select mode — drawing tools handle Backspace themselves
@@ -247,8 +248,8 @@
     {mode}
     onToggleMode={handleToggleMode}
     {activeTool}
-    canUndo={undoStack.canUndo}
-    canRedo={undoStack.canRedo}
+    canUndo={annotationStore.canUndo}
+    canRedo={annotationStore.canRedo}
     isDirty={annotationStore.isDirty(pageId) || hasGeometryEdits}
     annotationCount={table?.numRows ?? 0}
     onToolChange={handleToolChange}

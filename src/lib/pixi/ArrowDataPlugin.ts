@@ -54,7 +54,7 @@ export class ArrowDataPlugin {
   private yArr: Float32Array = new Float32Array(0);
   private wArr: Float32Array = new Float32Array(0);
   private hArr: Float32Array = new Float32Array(0);
-  private polygonCol: import("apache-arrow").Vector | null = null;
+  private polygonCache: (number[] | null)[] = []; // materialized once per table load
   private statusStr: string[] = []; // materialized once per table load
 
   // ── Group-by column cache ──
@@ -205,7 +205,24 @@ export class ArrowDataPlugin {
       this.yArr = table.getChild("y")!.toArray() as Float32Array;
       this.wArr = table.getChild("width")!.toArray() as Float32Array;
       this.hArr = table.getChild("height")!.toArray() as Float32Array;
-      this.polygonCol = table.getChild("polygon") ?? null;
+
+      // Materialize polygons once — avoids per-access Arrow Vector decode
+      const polyCol = table.getChild("polygon");
+      this.polygonCache = new Array(numRows);
+      for (let i = 0; i < numRows; i++) {
+        if (polyCol) {
+          const val = polyCol.get(i);
+          if (val && val.length > 0) {
+            const arr = new Array(val.length);
+            for (let j = 0; j < val.length; j++) arr[j] = val.get(j);
+            this.polygonCache[i] = arr;
+          } else {
+            this.polygonCache[i] = null;
+          }
+        } else {
+          this.polygonCache[i] = null;
+        }
+      }
 
       // Materialize status strings once — reused until table changes
       const statusCol = table.getChild("status");
@@ -486,15 +503,8 @@ export class ArrowDataPlugin {
     this.container.destroy({ children: true });
   }
 
-  /** Get polygon vertices for row i as a plain number array */
+  /** Get polygon vertices for row i (pre-cached, no Arrow decode) */
   getPolygonSlice(i: number): number[] | null {
-    if (!this.polygonCol) return null;
-    const val = this.polygonCol.get(i);
-    if (!val || val.length === 0) return null;
-    const arr = new Array(val.length);
-    for (let j = 0; j < val.length; j++) {
-      arr[j] = val.get(j);
-    }
-    return arr;
+    return this.polygonCache[i] ?? null;
   }
 }

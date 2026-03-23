@@ -130,7 +130,7 @@
       size="sm"
       class="h-8 w-8 p-0"
       title="Undo (Ctrl+Z)"
-      disabled={!canUndo}
+      disabled={!canUndo || mode === "view"}
       onclick={() => onUndo?.()}
     >
       <Undo2 class="h-4 w-4" />
@@ -140,7 +140,7 @@
       size="sm"
       class="h-8 w-8 p-0"
       title="Redo (Ctrl+Shift+Z)"
-      disabled={!canRedo}
+      disabled={!canRedo || mode === "view"}
       onclick={() => onRedo?.()}
     >
       <Redo2 class="h-4 w-4" />
@@ -151,11 +151,11 @@
 
   <!-- Save -->
   <Button
-    variant={isDirty ? "default" : "ghost"}
+    variant={isDirty && mode === "edit" ? "default" : "ghost"}
     size="sm"
     class="h-8 w-8 p-0"
     title="Save (Ctrl+S)"
-    disabled={!isDirty}
+    disabled={!isDirty || mode === "view"}
     onclick={() => onSave?.()}
   >
     <SaveIcon class="h-4 w-4" />

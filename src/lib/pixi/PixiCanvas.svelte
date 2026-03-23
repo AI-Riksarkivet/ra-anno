@@ -72,7 +72,7 @@
       arrowPlugin = new ArrowDataPlugin(app, colorFn, annotationStyle);
       interaction = new InteractionManager(app, arrowPlugin);
 
-      imagePlugin.canPan = () => interaction.currentTool === "select";
+      imagePlugin.canPan = () => interaction.currentTool === "pan";
 
       imagePlugin.onViewportChange = (bounds) => {
         zoom = imagePlugin.zoom;

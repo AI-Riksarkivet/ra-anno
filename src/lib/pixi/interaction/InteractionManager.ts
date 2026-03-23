@@ -82,10 +82,7 @@ export class InteractionManager {
       this.selectedIndex = primary;
       this.arrowPlugin.highlightSet(this.selectedSet);
       this.onSelect?.(primary);
-      // Auto-switch back to select tool
-      this._toolName = "select";
-      this.activeTool = null;
-      this.canvas.style.cursor = "default";
+      // Keep lasso active — user can draw again without re-selecting the tool
     };
     this.tools.set("lasso", lassoTool);
 
@@ -107,10 +104,17 @@ export class InteractionManager {
   setTool(tool: ToolType): void {
     this.activeTool?.cancel();
     this._toolName = tool;
-    this.activeTool = tool === "select" ? null : (this.tools.get(tool) ?? null);
+    this.activeTool =
+      tool === "select" || tool === "pan"
+        ? null
+        : (this.tools.get(tool) ?? null);
 
     // Set cursor for the active tool
-    this.canvas.style.cursor = this.activeTool ? CURSOR_DRAW : "default";
+    if (tool === "pan") {
+      this.canvas.style.cursor = "grab";
+    } else {
+      this.canvas.style.cursor = this.activeTool ? CURSOR_DRAW : "default";
+    }
   }
 
   /** Set edit mode — when false, no editing, no handles, view only */

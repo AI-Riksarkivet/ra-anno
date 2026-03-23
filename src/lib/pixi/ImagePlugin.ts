@@ -174,4 +174,9 @@ export class ImagePlugin {
     if (this.canPan && !this.canPan()) return;
     this.fitToViewport();
   };
+
+  /** Programmatic reset — callable from toolbar regardless of tool */
+  resetView(): void {
+    this.fitToViewport();
+  }
 }

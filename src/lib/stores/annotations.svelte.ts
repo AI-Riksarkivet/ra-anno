@@ -8,8 +8,14 @@ import {
 } from "apache-arrow";
 import { undoStack } from "./undo.svelte.js";
 
-/** Extract specific rows from a table into a new table */
-function extractRows(table: Table, indices: number[]): Table {
+// ── Helpers ──
+
+/** Extract specific rows from a table, applying field overlays */
+function extractRowsWithOverlays(
+  table: Table,
+  indices: number[],
+  fieldOverrides: Map<number, Map<string, unknown>>,
+): Table {
   if (indices.length === 0) return tableFromArrays({});
   const cols: Record<string, unknown[]> = {};
   for (const field of table.schema.fields) {
@@ -18,15 +24,12 @@ function extractRows(table: Table, indices: number[]): Table {
     const arr: unknown[] = new Array(indices.length);
     for (let j = 0; j < indices.length; j++) {
       const i = indices[j];
-      if (isListCol) {
-        const val = col.get(i);
-        if (val && val.length > 0) {
-          const plain = new Array(val.length);
-          for (let k = 0; k < val.length; k++) plain[k] = val.get(k);
-          arr[j] = plain;
-        } else {
-          arr[j] = null;
-        }
+      // Check field overlay first
+      const override = fieldOverrides.get(i)?.get(field.name);
+      if (override !== undefined) {
+        arr[j] = override;
+      } else if (isListCol) {
+        arr[j] = arrowListToArray(col.get(i));
       } else {
         arr[j] = col.get(i);
       }
@@ -36,41 +39,125 @@ function extractRows(table: Table, indices: number[]): Table {
   return tableFromArrays(cols);
 }
 
-/** Rebuild a table, preserving schema metadata from the original */
-function rebuildTable(
-  existing: Table,
-  cols: Record<string, unknown[]>,
+/** Build full table from Arrow base + overlays (only called on save) */
+function materializeTable(
+  base: Table,
+  fieldOverrides: Map<number, Map<string, unknown>>,
+  appendedRows: Record<string, unknown>[],
+  deletedIndices: Set<number>,
 ): Table {
+  const n = base.numRows + appendedRows.length - deletedIndices.size;
+  const cols: Record<string, unknown[]> = {};
+  for (const field of base.schema.fields) {
+    cols[field.name] = new Array(n);
+  }
+
+  let dst = 0;
+  // Copy base rows (skip deleted)
+  for (let i = 0; i < base.numRows; i++) {
+    if (deletedIndices.has(i)) continue;
+    const rowOverrides = fieldOverrides.get(i);
+    for (const field of base.schema.fields) {
+      const override = rowOverrides?.get(field.name);
+      if (override !== undefined) {
+        cols[field.name][dst] = override;
+      } else if (field.name === "polygon") {
+        cols[field.name][dst] = arrowListToArray(
+          base.getChild(field.name)!.get(i),
+        );
+      } else {
+        cols[field.name][dst] = base.getChild(field.name)!.get(i);
+      }
+    }
+    dst++;
+  }
+  // Append new rows
+  for (const row of appendedRows) {
+    for (const field of base.schema.fields) {
+      cols[field.name][dst] = row[field.name] ?? null;
+    }
+    dst++;
+  }
+
   const raw = tableFromArrays(cols);
-  // Preserve schema metadata (page-level info) that tableFromArrays drops
-  if (existing.schema.metadata.size > 0) {
-    const schemaWithMeta = new Schema(
-      raw.schema.fields,
-      existing.schema.metadata,
-    );
-    return new ArrowTable(schemaWithMeta, raw.batches);
+  // Preserve schema metadata
+  if (base.schema.metadata.size > 0) {
+    const schema = new Schema(raw.schema.fields, base.schema.metadata);
+    return new ArrowTable(schema, raw.batches);
   }
   return raw;
 }
 
+/** Convert Arrow List element to plain number array */
+function arrowListToArray(val: unknown): number[] | null {
+  if (!val || typeof val !== "object") return null;
+  const v = val as { length: number; get: (i: number) => number };
+  if (!v.length || v.length === 0) return null;
+  const arr = new Array(v.length);
+  for (let j = 0; j < v.length; j++) arr[j] = v.get(j);
+  return arr;
+}
+
+// ── Undo snapshot: captures overlay state, not full table rebuild ──
+
+interface UndoSnapshot {
+  fieldOverrides: Map<number, Map<string, unknown>>;
+  appendedRows: Record<string, unknown>[];
+  deletedIndices: Set<number>;
+  deletedIds: Set<string>;
+}
+
+function cloneSnapshot(
+  fo: Map<number, Map<string, unknown>>,
+  ar: Record<string, unknown>[],
+  di: Set<number>,
+  dids: Set<string>,
+): UndoSnapshot {
+  return {
+    fieldOverrides: new Map(
+      [...fo].map(([k, v]) => [k, new Map(v)]),
+    ),
+    appendedRows: ar.map((r) => ({ ...r })),
+    deletedIndices: new Set(di),
+    deletedIds: new Set(dids),
+  };
+}
+
 class AnnotationStore {
-  // $state.raw — Arrow Tables are large, only reassigned, never mutated
-  private _tables = $state.raw<Record<string, Table>>({});
+  // The server's Arrow table — NEVER modified after load. This is the read-only base.
+  private _serverTables = $state.raw<Record<string, Table>>({});
+
+  // Overlays on top of the server table — O(1) per edit, no table rebuild
+  private _fieldOverrides = $state<
+    Record<string, Map<number, Map<string, unknown>>>
+  >({});
+  private _appendedRows = $state<Record<string, Record<string, unknown>[]>>(
+    {},
+  );
+  private _deletedIndices = $state<Record<string, Set<number>>>({});
+  private _deletedIds = $state<Record<string, Set<string>>>({});
+
+  // Undo: snapshots of overlay state (cheap — just Maps, not full tables)
+  private _undoStack = $state<Record<string, UndoSnapshot[]>>({});
+  private _redoStack = $state<Record<string, UndoSnapshot[]>>({});
+
+  // Version tracking for OCC
+  private _versions = $state<Record<string, string>>({});
   private _dirty = $state<Record<string, boolean>>({});
   private _loading = $state<Record<string, boolean>>({});
 
-  // Version tracking: ETag from server, used for OCC
-  private _versions = $state<Record<string, string>>({});
+  // Materialized view — rebuilt only when overlays change (NOT the full Arrow table)
+  // This is what the UI and Pixi read from
+  private _materializedTables = $state.raw<Record<string, Table>>({});
 
-  // Delta tracking: which row indices have been modified since last save
-  private _dirtyRows = $state<Record<string, Set<number>>>({});
-  // Rows that were appended (not in the original server data)
-  private _appendedRows = $state<Record<string, Set<number>>>({});
-  // Row IDs that were deleted
-  private _deletedIds = $state<Record<string, Set<string>>>({});
-
+  /** The current table (base + overlays materialized) for UI consumption */
   table(pageId: string): Table | null {
-    return this._tables[pageId] ?? null;
+    return this._materializedTables[pageId] ?? null;
+  }
+
+  /** The server's original table (for reading columns zero-copy) */
+  serverTable(pageId: string): Table | null {
+    return this._serverTables[pageId] ?? null;
   }
 
   isDirty(pageId: string): boolean {
@@ -85,32 +172,42 @@ class AnnotationStore {
     return this._versions[pageId] ?? null;
   }
 
-  private trackDirtyRow(pageId: string, index: number): void {
-    const set = this._dirtyRows[pageId] ?? new Set();
-    set.add(index);
-    this._dirtyRows = { ...this._dirtyRows, [pageId]: set };
+  private getOverlays(pageId: string) {
+    return {
+      fields: this._fieldOverrides[pageId] ?? new Map(),
+      appended: this._appendedRows[pageId] ?? [],
+      deleted: this._deletedIndices[pageId] ?? new Set(),
+      deletedIds: this._deletedIds[pageId] ?? new Set(),
+    };
   }
 
-  private trackDirtyRows(pageId: string, indices: Iterable<number>): void {
-    const set = this._dirtyRows[pageId] ?? new Set();
-    for (const i of indices) set.add(i);
-    this._dirtyRows = { ...this._dirtyRows, [pageId]: set };
+  private pushUndo(pageId: string): void {
+    const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
+    const snapshot = cloneSnapshot(fields, appended, deleted, deletedIds);
+    const stack = this._undoStack[pageId] ?? [];
+    stack.push(snapshot);
+    this._undoStack = { ...this._undoStack, [pageId]: stack };
+    // Clear redo on new edit
+    this._redoStack = { ...this._redoStack, [pageId]: [] };
   }
 
-  private clearDelta(pageId: string): void {
-    this._dirtyRows = { ...this._dirtyRows, [pageId]: new Set() };
-    this._appendedRows = { ...this._appendedRows, [pageId]: new Set() };
-    this._deletedIds = { ...this._deletedIds, [pageId]: new Set() };
+  private rematerialize(pageId: string): void {
+    const base = this._serverTables[pageId];
+    if (!base) return;
+    const { fields, appended, deleted } = this.getOverlays(pageId);
+    const table = materializeTable(base, fields, appended, deleted);
+    this._materializedTables = {
+      ...this._materializedTables,
+      [pageId]: table,
+    };
+    this._dirty = { ...this._dirty, [pageId]: true };
   }
 
-  /**
-   * Load annotations with streaming support.
-   * Reads the response as a stream, parsing Arrow IPC incrementally.
-   * Each parsed batch triggers a reactive update → canvas renders progressively.
-   */
+  // ── Load ──
+
   async load(pageId: string): Promise<Table> {
-    const cached = this._tables[pageId];
-    if (cached) return cached;
+    const cached = this._serverTables[pageId];
+    if (cached) return this._materializedTables[pageId] ?? cached;
 
     this._loading = { ...this._loading, [pageId]: true };
 
@@ -120,21 +217,23 @@ class AnnotationStore {
       throw new Error(`Failed to load annotations: ${res.status}`);
     }
 
-    // Store server version from ETag
     const etag = res.headers.get("ETag") ?? "";
     this._versions = { ...this._versions, [pageId]: etag };
 
-    // If no body stream, fall back to batch
     if (!res.body) {
       const buffer = await res.arrayBuffer();
       const table = tableFromIPC(new Uint8Array(buffer));
-      this._tables = { ...this._tables, [pageId]: table };
+      this._serverTables = { ...this._serverTables, [pageId]: table };
+      this._materializedTables = {
+        ...this._materializedTables,
+        [pageId]: table,
+      };
       this._loading = { ...this._loading, [pageId]: false };
-      this.clearDelta(pageId);
+      this.clearOverlays(pageId);
       return table;
     }
 
-    // Stream: read chunks, accumulate bytes, try parsing after each chunk
+    // Stream
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let totalLen = 0;
@@ -142,260 +241,269 @@ class AnnotationStore {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       chunks.push(value);
       totalLen += value.length;
-
       try {
         const combined = concatBytes(chunks, totalLen);
         const table = tableFromIPC(combined);
         if (table.numRows > 0) {
-          this._tables = { ...this._tables, [pageId]: table };
+          this._serverTables = { ...this._serverTables, [pageId]: table };
+          this._materializedTables = {
+            ...this._materializedTables,
+            [pageId]: table,
+          };
         }
-      } catch {
-        // Incomplete IPC stream — wait for more bytes
-      }
+      } catch { /* incomplete stream */ }
     }
 
-    // Final parse with all bytes
     const combined = concatBytes(chunks, totalLen);
     const table = tableFromIPC(combined);
-    this._tables = { ...this._tables, [pageId]: table };
+    this._serverTables = { ...this._serverTables, [pageId]: table };
+    this._materializedTables = {
+      ...this._materializedTables,
+      [pageId]: table,
+    };
     this._loading = { ...this._loading, [pageId]: false };
-    this.clearDelta(pageId);
+    this.clearOverlays(pageId);
     return table;
   }
 
-  appendLocal(pageId: string, row: Record<string, unknown>): Table | null {
-    const existing = this._tables[pageId];
-    if (!existing) return null;
-
-    undoStack.push(existing);
-
-    const cols: Record<string, unknown[]> = {};
-    for (const field of existing.schema.fields) {
-      cols[field.name] = [row[field.name] ?? null];
-    }
-    const updated = existing.concat(tableFromArrays(cols));
-    const newIndex = updated.numRows - 1;
-
-    // Track as appended
-    const appended = this._appendedRows[pageId] ?? new Set();
-    appended.add(newIndex);
-    this._appendedRows = { ...this._appendedRows, [pageId]: appended };
-
-    this._tables = { ...this._tables, [pageId]: updated };
-    this._dirty = { ...this._dirty, [pageId]: true };
-    return updated;
-  }
+  // ── Edits (O(1) — overlay only, no table rebuild) ──
 
   updateLocal(
     pageId: string,
     rowIndex: number,
     updates: Record<string, unknown>,
-  ): Table | null {
-    const existing = this._tables[pageId];
-    if (!existing || rowIndex < 0 || rowIndex >= existing.numRows) return null;
-
-    undoStack.push(existing);
-
-    const cols: Record<string, unknown[]> = {};
-    for (const field of existing.schema.fields) {
-      const col = existing.getChild(field.name)!;
-      const n = existing.numRows;
-      const isListCol = field.name === "polygon";
-
-      const arr: unknown[] = new Array(n);
-      for (let i = 0; i < n; i++) {
-        if (i === rowIndex && field.name in updates) {
-          arr[i] = updates[field.name];
-        } else if (isListCol) {
-          const val = col.get(i);
-          if (val && val.length > 0) {
-            const plain = new Array(val.length);
-            for (let j = 0; j < val.length; j++) plain[j] = val.get(j);
-            arr[i] = plain;
-          } else {
-            arr[i] = null;
-          }
-        } else {
-          arr[i] = col.get(i);
-        }
-      }
-      cols[field.name] = arr;
+  ): void {
+    this.pushUndo(pageId);
+    const fields = this._fieldOverrides[pageId] ?? new Map();
+    let row = fields.get(rowIndex);
+    if (!row) {
+      row = new Map();
+      fields.set(rowIndex, row);
     }
-
-    const updated = rebuildTable(existing, cols);
-    this._tables = { ...this._tables, [pageId]: updated };
-    this._dirty = { ...this._dirty, [pageId]: true };
-    this.trackDirtyRow(pageId, rowIndex);
-    return updated;
+    for (const [k, v] of Object.entries(updates)) {
+      row.set(k, v);
+    }
+    this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
+    this.rematerialize(pageId);
   }
 
-  /** Apply multiple row updates in a single table rebuild + single undo entry */
   batchUpdateLocal(
     pageId: string,
     updatesMap: Map<number, Record<string, unknown>>,
-  ): Table | null {
-    const existing = this._tables[pageId];
-    if (!existing || updatesMap.size === 0) return existing ?? null;
-
-    undoStack.push(existing);
-
-    const cols: Record<string, unknown[]> = {};
-    for (const field of existing.schema.fields) {
-      const col = existing.getChild(field.name)!;
-      const n = existing.numRows;
-      const isListCol = field.name === "polygon";
-
-      const arr: unknown[] = new Array(n);
-      for (let i = 0; i < n; i++) {
-        const rowUpdates = updatesMap.get(i);
-        if (rowUpdates && field.name in rowUpdates) {
-          arr[i] = rowUpdates[field.name];
-        } else if (isListCol) {
-          const val = col.get(i);
-          if (val && val.length > 0) {
-            const plain = new Array(val.length);
-            for (let j = 0; j < val.length; j++) plain[j] = val.get(j);
-            arr[i] = plain;
-          } else {
-            arr[i] = null;
-          }
-        } else {
-          arr[i] = col.get(i);
-        }
+  ): void {
+    if (updatesMap.size === 0) return;
+    this.pushUndo(pageId);
+    const fields = this._fieldOverrides[pageId] ?? new Map();
+    for (const [rowIndex, updates] of updatesMap) {
+      let row = fields.get(rowIndex);
+      if (!row) {
+        row = new Map();
+        fields.set(rowIndex, row);
       }
-      cols[field.name] = arr;
+      for (const [k, v] of Object.entries(updates)) {
+        row.set(k, v);
+      }
     }
-
-    const updated = rebuildTable(existing, cols);
-    this._tables = { ...this._tables, [pageId]: updated };
-    this._dirty = { ...this._dirty, [pageId]: true };
-    this.trackDirtyRows(pageId, updatesMap.keys());
-    return updated;
+    this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
+    this.rematerialize(pageId);
   }
 
-  deleteLocal(pageId: string, rowIndex: number): Table | null {
-    const existing = this._tables[pageId];
-    if (!existing || rowIndex < 0 || rowIndex >= existing.numRows) return null;
+  appendLocal(pageId: string, row: Record<string, unknown>): Table | null {
+    const base = this._serverTables[pageId];
+    if (!base) return null;
+    this.pushUndo(pageId);
+    const appended = [...(this._appendedRows[pageId] ?? []), row];
+    this._appendedRows = { ...this._appendedRows, [pageId]: appended };
+    this.rematerialize(pageId);
+    return this._materializedTables[pageId] ?? null;
+  }
 
-    undoStack.push(existing);
+  deleteLocal(pageId: string, rowIndex: number): void {
+    const base = this._serverTables[pageId];
+    if (!base) return;
+    this.pushUndo(pageId);
 
-    // Track the deleted annotation's ID for the server
-    const deletedId = String(
-      existing.getChild("id")?.get(rowIndex) ?? "",
-    );
-    if (deletedId) {
-      const deleted = this._deletedIds[pageId] ?? new Set();
-      deleted.add(deletedId);
-      this._deletedIds = { ...this._deletedIds, [pageId]: deleted };
-    }
+    const baseRows = base.numRows;
+    if (rowIndex < baseRows) {
+      // Deleting a server row — track by index and ID
+      const deleted = new Set(this._deletedIndices[pageId] ?? []);
+      deleted.add(rowIndex);
+      this._deletedIndices = { ...this._deletedIndices, [pageId]: deleted };
 
-    const n = existing.numRows;
-    const cols: Record<string, unknown[]> = {};
-    for (const field of existing.schema.fields) {
-      const col = existing.getChild(field.name)!;
-      const isListCol = field.name === "polygon";
-      const dst = new Array(n - 1);
-      for (let i = 0, j = 0; i < n; i++) {
-        if (i === rowIndex) continue;
-        if (isListCol) {
-          const val = col.get(i);
-          if (val && val.length > 0) {
-            const plain = new Array(val.length);
-            for (let k = 0; k < val.length; k++) plain[k] = val.get(k);
-            dst[j++] = plain;
-          } else {
-            dst[j++] = null;
-          }
-        } else {
-          dst[j++] = col.get(i);
-        }
+      const id = String(base.getChild("id")?.get(rowIndex) ?? "");
+      if (id) {
+        const deletedIds = new Set(this._deletedIds[pageId] ?? []);
+        deletedIds.add(id);
+        this._deletedIds = { ...this._deletedIds, [pageId]: deletedIds };
       }
-      cols[field.name] = dst;
+
+      // Remove any field overrides for this row
+      const fields = this._fieldOverrides[pageId];
+      if (fields) {
+        fields.delete(rowIndex);
+        this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
+      }
+    } else {
+      // Deleting an appended row
+      const appendedIndex = rowIndex - baseRows;
+      const appended = [...(this._appendedRows[pageId] ?? [])];
+      // Adjust for already-deleted base rows
+      const deleted = this._deletedIndices[pageId] ?? new Set();
+      let actualAppendedIdx = appendedIndex;
+      for (const d of deleted) {
+        if (d <= rowIndex) actualAppendedIdx++;
+      }
+      actualAppendedIdx = rowIndex - baseRows + deleted.size;
+      if (actualAppendedIdx >= 0 && actualAppendedIdx < appended.length) {
+        appended.splice(actualAppendedIdx, 1);
+        this._appendedRows = { ...this._appendedRows, [pageId]: appended };
+      }
     }
 
-    // Shift dirty row indices above the deleted row down by 1
-    const dirtyRows = this._dirtyRows[pageId];
-    if (dirtyRows) {
-      const shifted = new Set<number>();
-      for (const idx of dirtyRows) {
-        if (idx < rowIndex) shifted.add(idx);
-        else if (idx > rowIndex) shifted.add(idx - 1);
-      }
-      this._dirtyRows = { ...this._dirtyRows, [pageId]: shifted };
-    }
-    const appended = this._appendedRows[pageId];
-    if (appended) {
-      const shifted = new Set<number>();
-      for (const idx of appended) {
-        if (idx < rowIndex) shifted.add(idx);
-        else if (idx > rowIndex) shifted.add(idx - 1);
-      }
-      this._appendedRows = { ...this._appendedRows, [pageId]: shifted };
-    }
+    this.rematerialize(pageId);
+  }
 
-    const updated = rebuildTable(existing, cols);
-    this._tables = { ...this._tables, [pageId]: updated };
-    this._dirty = { ...this._dirty, [pageId]: true };
-    return updated;
+  // ── Undo / Redo (swap overlay snapshots — no table involved) ──
+
+  get canUndo(): boolean {
+    return Object.values(this._undoStack).some((s) => s.length > 0);
+  }
+
+  get canRedo(): boolean {
+    return Object.values(this._redoStack).some((s) => s.length > 0);
   }
 
   undo(pageId: string): Table | null {
-    const current = this._tables[pageId];
-    if (!current) return null;
+    const stack = this._undoStack[pageId];
+    if (!stack || stack.length === 0) return null;
 
-    const prev = undoStack.undo(current);
-    if (!prev) return null;
+    // Save current state to redo
+    const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
+    const current = cloneSnapshot(fields, appended, deleted, deletedIds);
+    const redo = this._redoStack[pageId] ?? [];
+    redo.push(current);
+    this._redoStack = { ...this._redoStack, [pageId]: redo };
 
-    this._tables = { ...this._tables, [pageId]: prev };
-    this._dirty = { ...this._dirty, [pageId]: true };
-    return prev;
+    // Pop previous state
+    const prev = stack.pop()!;
+    this._undoStack = { ...this._undoStack, [pageId]: stack };
+    this._fieldOverrides = {
+      ...this._fieldOverrides,
+      [pageId]: prev.fieldOverrides,
+    };
+    this._appendedRows = {
+      ...this._appendedRows,
+      [pageId]: prev.appendedRows,
+    };
+    this._deletedIndices = {
+      ...this._deletedIndices,
+      [pageId]: prev.deletedIndices,
+    };
+    this._deletedIds = { ...this._deletedIds, [pageId]: prev.deletedIds };
+
+    this.rematerialize(pageId);
+    return this._materializedTables[pageId] ?? null;
   }
 
   redo(pageId: string): Table | null {
-    const current = this._tables[pageId];
-    if (!current) return null;
+    const stack = this._redoStack[pageId];
+    if (!stack || stack.length === 0) return null;
 
-    const next = undoStack.redo(current);
-    if (!next) return null;
+    // Save current to undo
+    const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
+    const current = cloneSnapshot(fields, appended, deleted, deletedIds);
+    const undo = this._undoStack[pageId] ?? [];
+    undo.push(current);
+    this._undoStack = { ...this._undoStack, [pageId]: undo };
 
-    this._tables = { ...this._tables, [pageId]: next };
-    this._dirty = { ...this._dirty, [pageId]: true };
-    return next;
+    // Pop next state
+    const next = stack.pop()!;
+    this._redoStack = { ...this._redoStack, [pageId]: stack };
+    this._fieldOverrides = {
+      ...this._fieldOverrides,
+      [pageId]: next.fieldOverrides,
+    };
+    this._appendedRows = {
+      ...this._appendedRows,
+      [pageId]: next.appendedRows,
+    };
+    this._deletedIndices = {
+      ...this._deletedIndices,
+      [pageId]: next.deletedIndices,
+    };
+    this._deletedIds = { ...this._deletedIds, [pageId]: next.deletedIds };
+
+    this.rematerialize(pageId);
+    return this._materializedTables[pageId] ?? null;
   }
 
+  // ── Save (delta only — builds table from overlays, not full base) ──
+
   async save(pageId: string): Promise<Table> {
-    const table = this._tables[pageId];
-    if (!table) throw new Error("No table to save");
+    const base = this._serverTables[pageId];
+    if (!base) throw new Error("No table to save");
 
-    // Build delta: only rows that changed or were appended
-    const dirtyRows = this._dirtyRows[pageId] ?? new Set();
-    const appendedRows = this._appendedRows[pageId] ?? new Set();
-    const deletedIds = this._deletedIds[pageId] ?? new Set();
-    const allDirtyIndices = [...new Set([...dirtyRows, ...appendedRows])];
+    const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
 
-    // If we have a delta, send only changed rows. Otherwise send full table.
-    const hasDeltas = allDirtyIndices.length > 0 || deletedIds.size > 0;
-    const ipc = hasDeltas && allDirtyIndices.length > 0
-      ? tableToIPC(extractRows(table, allDirtyIndices), "stream")
-      : hasDeltas
-      ? new Uint8Array(0) // only deletes, no row data
-      : tableToIPC(table, "stream"); // fallback: full table
+    // Build delta: only modified + appended rows
+    const dirtyBaseIndices = [...fields.keys()].filter(
+      (i) => !deleted.has(i),
+    );
+    const hasChanges = dirtyBaseIndices.length > 0 || appended.length > 0 ||
+      deletedIds.size > 0;
 
-    const method = hasDeltas ? "PATCH" : "POST";
+    let ipc: Uint8Array;
+    let method: string;
+
+    if (hasChanges && (dirtyBaseIndices.length > 0 || appended.length > 0)) {
+      // Build delta table: modified base rows + appended rows
+      const materialized = this._materializedTables[pageId];
+      if (!materialized) throw new Error("No materialized table");
+
+      // Find indices of dirty rows in the materialized table
+      // Materialized = base rows (minus deleted, with overrides) + appended
+      const matBaseCount = base.numRows - deleted.size;
+      const matIndices: number[] = [];
+
+      // Map base dirty indices to materialized indices (accounting for deleted rows before them)
+      for (const baseIdx of dirtyBaseIndices) {
+        let matIdx = baseIdx;
+        for (const d of deleted) {
+          if (d < baseIdx) matIdx--;
+        }
+        matIndices.push(matIdx);
+      }
+
+      // Appended rows are at the end of materialized table
+      for (let a = 0; a < appended.length; a++) {
+        matIndices.push(matBaseCount + a);
+      }
+
+      const delta = extractRowsWithOverlays(
+        materialized,
+        matIndices,
+        new Map(),
+      );
+      ipc = tableToIPC(delta, "stream");
+      method = "PATCH";
+    } else if (deletedIds.size > 0) {
+      ipc = new Uint8Array(0);
+      method = "PATCH";
+    } else {
+      // No changes — shouldn't happen but fallback to full table
+      const materialized = this._materializedTables[pageId];
+      if (!materialized) throw new Error("No materialized table");
+      ipc = tableToIPC(materialized, "stream");
+      method = "POST";
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/vnd.apache.arrow.stream",
     };
-
-    // OCC: send the version we loaded from
     const loadedVersion = this._versions[pageId];
-    if (loadedVersion) {
-      headers["If-Match"] = loadedVersion;
-    }
-
-    // Include deleted IDs as a header (comma-separated)
+    if (loadedVersion) headers["If-Match"] = loadedVersion;
     if (deletedIds.size > 0) {
       headers["X-Deleted-Ids"] = [...deletedIds].join(",");
     }
@@ -413,20 +521,36 @@ class AnnotationStore {
     }
     if (!res.ok) throw new Error(`Save failed: ${res.status}`);
 
-    // Update version from response
     const newVersion = res.headers.get("ETag") ?? "";
     this._versions = { ...this._versions, [pageId]: newVersion };
 
     const fresh = tableFromIPC(new Uint8Array(await res.arrayBuffer()));
-    this._tables = { ...this._tables, [pageId]: fresh };
-    this._dirty = { ...this._dirty, [pageId]: false };
-    this.clearDelta(pageId);
-    undoStack.clear();
+    this._serverTables = { ...this._serverTables, [pageId]: fresh };
+    this._materializedTables = {
+      ...this._materializedTables,
+      [pageId]: fresh,
+    };
+    this.clearOverlays(pageId);
     return fresh;
+  }
+
+  private clearOverlays(pageId: string): void {
+    this._fieldOverrides = {
+      ...this._fieldOverrides,
+      [pageId]: new Map(),
+    };
+    this._appendedRows = { ...this._appendedRows, [pageId]: [] };
+    this._deletedIndices = {
+      ...this._deletedIndices,
+      [pageId]: new Set(),
+    };
+    this._deletedIds = { ...this._deletedIds, [pageId]: new Set() };
+    this._undoStack = { ...this._undoStack, [pageId]: [] };
+    this._redoStack = { ...this._redoStack, [pageId]: [] };
+    this._dirty = { ...this._dirty, [pageId]: false };
   }
 }
 
-/** Concatenate Uint8Array chunks into a single buffer */
 function concatBytes(chunks: Uint8Array[], totalLen: number): Uint8Array {
   const result = new Uint8Array(totalLen);
   let offset = 0;
