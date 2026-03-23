@@ -1,6 +1,7 @@
 <script lang="ts">
   import PixiCanvas from "$lib/pixi/PixiCanvas.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
+  import ZoomControls from "$lib/components/ZoomControls.svelte";
   import AnnotationSidebar from "$lib/components/AnnotationSidebar.svelte";
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
   import { statusColor } from "$lib/utils/color.js";
@@ -57,8 +58,18 @@
     // Init mode — view by default, no editing until toggled
     ctx.plugins.interaction.setEditMode(mode === "edit");
 
-    await ctx.plugins.image.load(`/api/images/${pageId}`);
+    // Load annotations — image is embedded in the Arrow schema metadata
     await annotationStore.load(pageId);
+
+    // Image comes from the Arrow table — no separate HTTP request
+    const loadedTable = annotationStore.serverTable(pageId);
+    const imageB64 = loadedTable?.schema.metadata.get("image_base64");
+    const imageMime =
+      loadedTable?.schema.metadata.get("image_mime") ?? "image/png";
+    if (imageB64) {
+      const bytes = Uint8Array.from(atob(imageB64), (c) => c.charCodeAt(0));
+      await ctx.plugins.image.loadFromBytes(bytes, imageMime);
+    }
 
     // Drawing tool commits → append to Arrow store, auto-select the new shape
     ctx.plugins.interaction.onCommit = (shape) => {
@@ -119,8 +130,25 @@
     pixiCtx?.plugins.interaction.setTool(tool);
   }
 
+  function handleZoomIn() {
+    pixiCtx?.plugins.image.zoomIn();
+  }
+
+  function handleZoomOut() {
+    pixiCtx?.plugins.image.zoomOut();
+  }
+
   function handleResetView() {
     pixiCtx?.plugins.image.resetView();
+  }
+
+  function handleImageChange(brightness: number, contrast: number, saturation: number) {
+    pixiCtx?.plugins.image.setImageAdjustments(brightness, contrast, saturation);
+  }
+
+  function handleStyleChange(style: { fillAlpha: number; strokeWidth: number; strokeAlpha: number }) {
+    pixiCtx?.plugins.arrow.setStyle(style);
+    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleUndo() {
@@ -275,27 +303,15 @@
     onUndo={handleUndo}
     onRedo={handleRedo}
     onSave={handleSave}
-    onResetView={handleResetView}
   />
 
   <!-- Center: canvas + floating controls -->
   <div class="relative flex-1">
     <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
 
-    <!-- Floating view/edit toggle -->
-    <div class="absolute left-2 top-2 z-10">
-      <button
-        class="flex h-8 items-center gap-1.5 rounded-md border bg-background/90 px-2.5 text-xs shadow-sm backdrop-blur-sm hover:bg-accent"
-        onclick={handleToggleMode}
-      >
-        {#if mode === "view"}
-          <span class="h-2 w-2 rounded-full bg-green-500"></span>
-          View
-        {:else}
-          <span class="h-2 w-2 rounded-full bg-blue-500"></span>
-          Edit
-        {/if}
-      </button>
+    <!-- Floating zoom controls -->
+    <div class="absolute bottom-2 right-2 z-10">
+      <ZoomControls {zoom} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onResetView={handleResetView} />
     </div>
   </div>
 
@@ -304,6 +320,7 @@
     {table}
     {selectedIndex}
     {selectedSet}
+    {mode}
     onSelect={(i) => {
       selectedIndex = i;
       selectedSet = new Set();
@@ -314,6 +331,8 @@
     onBulkUpdateField={handleBulkUpdateField}
     onBulkUpdateStatus={handleBulkUpdateStatus}
     onDelete={handleDelete}
+    onImageChange={handleImageChange}
+    onStyleChange={handleStyleChange}
   />
 </div>
 

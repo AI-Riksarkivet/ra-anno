@@ -15,6 +15,7 @@
   import { getContext } from "svelte";
   import { type LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import LayerPanel from "./LayerPanel.svelte";
+  import DisplayPanel from "./DisplayPanel.svelte";
   import { isAxisAlignedRect } from "$lib/pixi/interaction/geometry.js";
 
   const layers = getContext<LayerStore>(LAYER_CTX);
@@ -38,6 +39,8 @@
     onBulkUpdateField,
     onBulkUpdateStatus,
     onDelete,
+    onImageChange,
+    onStyleChange,
   }: {
     table?: Table | null;
     selectedIndex?: number | null;
@@ -49,6 +52,8 @@
     onBulkUpdateField?: (indices: ReadonlySet<number>, field: string, value: string) => void;
     onBulkUpdateStatus?: (indices: ReadonlySet<number>, status: AnnotationStatus) => void;
     onDelete?: (index: number) => void;
+    onImageChange?: (brightness: number, contrast: number, saturation: number) => void;
+    onStyleChange?: (style: { fillAlpha: number; strokeWidth: number; strokeAlpha: number }) => void;
   } = $props();
 
   const isMultiSelect = $derived(selectedSet.size > 1);
@@ -211,6 +216,9 @@
   <!-- Layer panel -->
   <LayerPanel {table} />
 
+  <!-- Display settings (image + annotation rendering) -->
+  <DisplayPanel {onImageChange} {onStyleChange} />
+
   <!-- Status summary bar -->
   {#if table && table.numRows > 0}
     <div class="flex items-center gap-0.5 border-b px-3 py-1.5" title="Annotation status breakdown">
@@ -309,85 +317,97 @@
     <div class="flex-1 space-y-3 overflow-y-auto p-3">
       <div>
         <span class="text-xs text-muted-foreground">Text</span>
-        <textarea
-          class="mt-1 min-h-[60px] w-full resize-y rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          placeholder="Transcription..."
-          value={String(selected.text || "")}
-          onchange={(e) => onUpdateField?.(selectedIndex, "text", e.currentTarget.value)}
-        ></textarea>
+        {#if mode === "edit"}
+          <textarea
+            class="mt-1 min-h-[60px] w-full resize-y rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="Transcription..."
+            value={String(selected.text || "")}
+            onchange={(e) => onUpdateField?.(selectedIndex, "text", e.currentTarget.value)}
+          ></textarea>
+        {:else}
+          <p class="mt-1 text-sm">{String(selected.text || "—")}</p>
+        {/if}
       </div>
 
       <div>
         <span class="text-xs text-muted-foreground">Label</span>
-        {#if creatingLabel}
-          <input
-            class="mt-1 h-8 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="New label name..."
-            bind:value={newLabelText}
-            onkeydown={(e) => {
-              if (e.key === "Enter" && newLabelText.trim()) {
-                onUpdateField?.(selectedIndex, "label", newLabelText.trim());
-                creatingLabel = false;
-                newLabelText = "";
-              }
-              if (e.key === "Escape") { creatingLabel = false; newLabelText = ""; }
-            }}
-            onblur={() => { creatingLabel = false; newLabelText = ""; }}
-          />
+        {#if mode === "edit"}
+          {#if creatingLabel}
+            <input
+              class="mt-1 h-8 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="New label name..."
+              bind:value={newLabelText}
+              onkeydown={(e) => {
+                if (e.key === "Enter" && newLabelText.trim()) {
+                  onUpdateField?.(selectedIndex, "label", newLabelText.trim());
+                  creatingLabel = false;
+                  newLabelText = "";
+                }
+                if (e.key === "Escape") { creatingLabel = false; newLabelText = ""; }
+              }}
+              onblur={() => { creatingLabel = false; newLabelText = ""; }}
+            />
+          {:else}
+            <Select
+              type="single"
+              value={String(selected.label || "")}
+              onValueChange={(v) => {
+                if (v === "__new__") { creatingLabel = true; return; }
+                if (v !== undefined) onUpdateField?.(selectedIndex, "label", v);
+              }}
+            >
+              <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.label || "Select label...")}</SelectTrigger>
+              <SelectContent>
+                {#each uniqueLabels as label (label)}
+                  <SelectItem value={label}>{label}</SelectItem>
+                {/each}
+                <SelectItem value="__new__">+ New label...</SelectItem>
+              </SelectContent>
+            </Select>
+          {/if}
         {:else}
-          <Select
-            type="single"
-            value={String(selected.label || "")}
-            onValueChange={(v) => {
-              if (v === "__new__") { creatingLabel = true; return; }
-              if (v !== undefined) onUpdateField?.(selectedIndex, "label", v);
-            }}
-          >
-            <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.label || "Select label...")}</SelectTrigger>
-            <SelectContent>
-              {#each uniqueLabels as label (label)}
-                <SelectItem value={label}>{label}</SelectItem>
-              {/each}
-              <SelectItem value="__new__">+ New label...</SelectItem>
-            </SelectContent>
-          </Select>
+          <p class="mt-1 text-sm">{String(selected.label || "—")}</p>
         {/if}
       </div>
 
       <div>
         <span class="text-xs text-muted-foreground">Group</span>
-        {#if creatingGroup}
-          <input
-            class="mt-1 h-8 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="New group name..."
-            bind:value={newGroupText}
-            onkeydown={(e) => {
-              if (e.key === "Enter" && newGroupText.trim()) {
-                onUpdateField?.(selectedIndex, "group", newGroupText.trim());
-                creatingGroup = false;
-                newGroupText = "";
-              }
-              if (e.key === "Escape") { creatingGroup = false; newGroupText = ""; }
-            }}
-            onblur={() => { creatingGroup = false; newGroupText = ""; }}
-          />
+        {#if mode === "edit"}
+          {#if creatingGroup}
+            <input
+              class="mt-1 h-8 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="New group name..."
+              bind:value={newGroupText}
+              onkeydown={(e) => {
+                if (e.key === "Enter" && newGroupText.trim()) {
+                  onUpdateField?.(selectedIndex, "group", newGroupText.trim());
+                  creatingGroup = false;
+                  newGroupText = "";
+                }
+                if (e.key === "Escape") { creatingGroup = false; newGroupText = ""; }
+              }}
+              onblur={() => { creatingGroup = false; newGroupText = ""; }}
+            />
+          {:else}
+            <Select
+              type="single"
+              value={String(selected.group || "")}
+              onValueChange={(v) => {
+                if (v === "__new__") { creatingGroup = true; return; }
+                if (v !== undefined) onUpdateField?.(selectedIndex, "group", v);
+              }}
+            >
+              <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.group || "Select group...")}</SelectTrigger>
+              <SelectContent>
+                {#each uniqueGroups as group (group)}
+                  <SelectItem value={group}>{group}</SelectItem>
+                {/each}
+                <SelectItem value="__new__">+ New group...</SelectItem>
+              </SelectContent>
+            </Select>
+          {/if}
         {:else}
-          <Select
-            type="single"
-            value={String(selected.group || "")}
-            onValueChange={(v) => {
-              if (v === "__new__") { creatingGroup = true; return; }
-              if (v !== undefined) onUpdateField?.(selectedIndex, "group", v);
-            }}
-          >
-            <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.group || "Select group...")}</SelectTrigger>
-            <SelectContent>
-              {#each uniqueGroups as group (group)}
-                <SelectItem value={group}>{group}</SelectItem>
-              {/each}
-              <SelectItem value="__new__">+ New group...</SelectItem>
-            </SelectContent>
-          </Select>
+          <p class="mt-1 text-sm">{String(selected.group || "—")}</p>
         {/if}
       </div>
 
@@ -421,42 +441,44 @@
         </div>
       {/if}
 
-      <Separator />
-
-      <div class="flex flex-col gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          class="justify-start text-green-700"
-          onclick={() => onUpdateStatus?.(selectedIndex, "accepted")}
-        >
-          Accept
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          class="justify-start text-red-700"
-          onclick={() => onUpdateStatus?.(selectedIndex, "rejected")}
-        >
-          Reject
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          class="justify-start"
-          onclick={() => onUpdateStatus?.(selectedIndex, "draft")}
-        >
-          Reset to Draft
-        </Button>
+      {#if mode === "edit"}
         <Separator />
-        <Button
-          variant="destructive"
-          size="sm"
-          onclick={() => onDelete?.(selectedIndex)}
-        >
-          Delete
-        </Button>
-      </div>
+
+        <div class="flex flex-col gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            class="justify-start text-green-700"
+            onclick={() => onUpdateStatus?.(selectedIndex, "accepted")}
+          >
+            Accept
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="justify-start text-red-700"
+            onclick={() => onUpdateStatus?.(selectedIndex, "rejected")}
+          >
+            Reject
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            class="justify-start"
+            onclick={() => onUpdateStatus?.(selectedIndex, "draft")}
+          >
+            Reset to Draft
+          </Button>
+          <Separator />
+          <Button
+            variant="destructive"
+            size="sm"
+            onclick={() => onDelete?.(selectedIndex)}
+          >
+            Delete
+          </Button>
+        </div>
+      {/if}
     </div>
   {:else}
     <!-- Search + count header -->

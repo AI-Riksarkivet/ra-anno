@@ -12,7 +12,6 @@
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import SaveIcon from "@lucide/svelte/icons/save";
-  import Maximize from "@lucide/svelte/icons/maximize";
   import Eye from "@lucide/svelte/icons/eye";
   import Pencil from "@lucide/svelte/icons/pencil";
 
@@ -28,7 +27,6 @@
     onUndo,
     onRedo,
     onSave,
-    onResetView,
   }: {
     activeTool?: Tool;
     canUndo?: boolean;
@@ -41,7 +39,6 @@
     onUndo?: () => void;
     onRedo?: () => void;
     onSave?: () => void;
-    onResetView?: () => void;
   } = $props();
 </script>
 
@@ -133,19 +130,6 @@
       </Button>
     {/if}
   </div>
-
-  <Separator class="my-2 w-6" />
-
-  <!-- Reset view -->
-  <Button
-    variant="ghost"
-    size="sm"
-    class="h-8 w-8 p-0"
-    title="Reset View"
-    onclick={() => onResetView?.()}
-  >
-    <Maximize class="h-4 w-4" />
-  </Button>
 
   {#if mode === "edit"}
     <Separator class="my-2 w-6" />

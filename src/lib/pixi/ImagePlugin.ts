@@ -1,4 +1,4 @@
-import { Application, Sprite, Texture } from "pixi.js";
+import { Application, ColorMatrixFilter, Sprite, Texture } from "pixi.js";
 import type { ViewportBounds } from "./types.js";
 
 export class ImagePlugin {
@@ -46,6 +46,44 @@ export class ImagePlugin {
     // Add as bottom layer on stage
     this.app.stage.addChildAt(this.sprite, 0);
     this.fitToViewport();
+  }
+
+  /**
+   * Load image from Arrow Binary column data (zero-copy path).
+   * The bytes go from Arrow buffer → Blob → ObjectURL → Image → GPU texture.
+   * No extra HTTP request, no separate endpoint.
+   */
+  async loadFromBytes(
+    bytes: Uint8Array,
+    mimeType = "image/png",
+  ): Promise<void> {
+    if (this.sprite) {
+      this.app.stage.removeChild(this.sprite);
+      this.sprite.destroy();
+    }
+
+    const blob = new Blob([bytes as unknown as BlobPart], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () =>
+          reject(new Error("Failed to load image from Arrow binary data"));
+        img.src = url;
+      });
+
+      const texture = Texture.from(img);
+      this.sprite = new Sprite(texture);
+      this.imageWidth = img.naturalWidth;
+      this.imageHeight = img.naturalHeight;
+
+      this.app.stage.addChildAt(this.sprite, 0);
+      this.fitToViewport();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   }
 
   fitToViewport(): void {
@@ -175,8 +213,43 @@ export class ImagePlugin {
     this.fitToViewport();
   };
 
-  /** Programmatic reset — callable from toolbar regardless of tool */
+  /** Apply image adjustments via ColorMatrixFilter */
+  setImageAdjustments(brightness: number, contrast: number, saturation: number): void {
+    if (!this.sprite) return;
+
+    // All at defaults (1.0) — remove filter for zero overhead
+    if (brightness === 1 && contrast === 1 && saturation === 1) {
+      this.sprite.filters = [];
+      this.app.render();
+      return;
+    }
+
+    const filter = new ColorMatrixFilter();
+    filter.brightness(brightness, false);
+    filter.contrast(contrast - 1, true); // pixi contrast: 0 = normal, -1 = grey, +1 = high
+    filter.saturate(saturation - 1, true); // pixi saturate: 0 = normal, -1 = desaturated
+    this.sprite.filters = [filter];
+    this.app.render();
+  }
+
+  /** Programmatic reset — callable from UI regardless of tool */
   resetView(): void {
     this.fitToViewport();
+  }
+
+  /** Zoom in by a fixed step, centered on canvas */
+  zoomIn(): void {
+    const vw = this.app.screen.width;
+    const vh = this.app.screen.height;
+    this.zoomAt(vw / 2, vh / 2, 1.25);
+    this.applyTransform();
+  }
+
+  /** Zoom out by a fixed step, centered on canvas */
+  zoomOut(): void {
+    const vw = this.app.screen.width;
+    const vh = this.app.screen.height;
+    this.zoomAt(vw / 2, vh / 2, 0.8);
+    this.applyTransform();
   }
 }

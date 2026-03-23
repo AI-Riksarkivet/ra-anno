@@ -104,10 +104,9 @@ export class InteractionManager {
   setTool(tool: ToolType): void {
     this.activeTool?.cancel();
     this._toolName = tool;
-    this.activeTool =
-      tool === "select" || tool === "pan"
-        ? null
-        : (this.tools.get(tool) ?? null);
+    this.activeTool = tool === "select" || tool === "pan"
+      ? null
+      : (this.tools.get(tool) ?? null);
 
     // Set cursor for the active tool
     if (tool === "pan") {

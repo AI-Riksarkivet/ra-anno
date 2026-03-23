@@ -105,6 +105,12 @@ const table = tableFromArrays({
   metadata: metadatas,
 });
 
+// Embed page image in schema metadata as base64 (travels with Arrow IPC)
+const svgBytes = await Deno.readFile("static/mock/sample-page.svg");
+const imageB64 = btoa(
+  String.fromCharCode(...new Uint8Array(svgBytes)),
+);
+
 // Rebuild table with schema-level metadata (must be set before IPC serialization)
 const pageMetadata = new Map([
   ["page_id", "mock-page-001"],
@@ -117,6 +123,8 @@ const pageMetadata = new Map([
   ["scan_date", "2024-03-15"],
   ["htr_model", "trocr-v2-riksarkivet"],
   ["htr_date", "2025-01-10"],
+  ["image_base64", imageB64],
+  ["image_mime", "image/svg+xml"],
 ]);
 const schemaWithMeta = new Schema(table.schema.fields, pageMetadata);
 const tableWithMeta = new Table(schemaWithMeta, table.batches);

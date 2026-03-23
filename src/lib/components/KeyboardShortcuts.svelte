@@ -12,11 +12,12 @@
 
   const shortcuts = [
     { category: "Tools", items: [
+      { keys: ["0"], action: "Pan tool" },
       { keys: ["1"], action: "Select tool" },
-      { keys: ["2"], action: "Rectangle tool" },
-      { keys: ["3"], action: "Polygon tool" },
-      { keys: ["4"], action: "Intelligent Scissors" },
-      { keys: ["5"], action: "Magnetic Cursor" },
+      { keys: ["2"], action: "Rectangle tool (edit)" },
+      { keys: ["3"], action: "Polygon tool (edit)" },
+      { keys: ["4"], action: "Intelligent Scissors (edit)" },
+      { keys: ["5"], action: "Magnetic Cursor (edit)" },
       { keys: ["6"], action: "Lasso Select" },
     ]},
     { category: "Drawing", items: [
@@ -56,7 +57,7 @@
 }} />
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="max-w-lg">
+  <Dialog.Content class="max-h-[85vh] max-w-lg overflow-y-auto">
     <Dialog.Header>
       <Dialog.Title class="flex items-center gap-2">
         <Keyboard class="h-5 w-5" />
