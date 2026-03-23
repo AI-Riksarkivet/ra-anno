@@ -5,6 +5,8 @@ import {
   pointInPolygon,
 } from "../interaction/geometry.js";
 import {
+  CURSOR_MIDPOINT,
+  CURSOR_VERTEX,
   type Editor,
   type GeometryUpdate,
   HANDLE_FILL,
@@ -15,8 +17,6 @@ import {
   MIDPOINT_STROKE,
   STROKE_COLOR,
   VERTEX_SIZE_PX,
-  CURSOR_VERTEX,
-  CURSOR_MIDPOINT,
 } from "../interaction/types.js";
 
 const MIDPOINT_SIZE_PX = 2;

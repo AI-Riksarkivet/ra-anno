@@ -19,6 +19,7 @@
     "npm:prettier@3": "3.8.1",
     "npm:shadcn-svelte@latest": "1.1.1",
     "npm:shadcn-svelte@next": "1.0.0-next.19",
+    "npm:svelte-check@*": "4.4.5_svelte@5.54.1_typescript@5.9.3",
     "npm:svelte-check@4": "4.4.5_svelte@5.54.1_typescript@5.9.3",
     "npm:svelte@5": "5.54.1",
     "npm:tailwind-merge@3": "3.0.2",

@@ -1,4 +1,9 @@
-import { tableFromArrays, tableToIPC } from "apache-arrow";
+import {
+  Schema,
+  Table,
+  tableFromArrays,
+  tableToIPC,
+} from "apache-arrow";
 
 const NUM_ROWS = 50;
 const STATUSES = ["prediction", "draft", "reviewed", "accepted", "rejected"];
@@ -11,6 +16,7 @@ const LABELS = [
   "page-number",
   "signature",
 ];
+const GROUPS = ["line", "block", "marginalia", "header", "uncategorized"];
 
 // Build status array matching counts, then shuffle
 const statuses: string[] = [];
@@ -35,6 +41,9 @@ const texts: string[] = [];
 const labels: string[] = [];
 const confidences = new Float32Array(NUM_ROWS);
 const sources: string[] = [];
+const reviewers: string[] = [];
+const groups: string[] = [];
+const metadatas: string[] = [];
 
 for (let i = 0; i < NUM_ROWS; i++) {
   ids.push(`ann-${String(i).padStart(3, "0")}`);
@@ -78,6 +87,9 @@ for (let i = 0; i < NUM_ROWS; i++) {
   labels.push(LABELS[i % LABELS.length]);
   confidences[i] = 0.3 + Math.random() * 0.69;
   sources.push(i % 3 === 0 ? "manual" : "model:trocr-v2");
+  reviewers.push("");
+  groups.push(GROUPS[i % GROUPS.length]);
+  metadatas.push("{}");
 }
 
 const table = tableFromArrays({
@@ -93,9 +105,28 @@ const table = tableFromArrays({
   confidence: confidences,
   source: sources,
   status: statuses,
+  reviewer: reviewers,
+  group: groups,
+  metadata: metadatas,
 });
 
-const ipc = tableToIPC(table, "stream");
+// Rebuild table with schema-level metadata (must be set before IPC serialization)
+const pageMetadata = new Map([
+  ["page_id", "mock-page-001"],
+  ["document_id", "mock-doc"],
+  ["dataset_id", "mock-dataset"],
+  ["image_width", "800"],
+  ["image_height", "1100"],
+  ["source_archive", "Riksarkivet"],
+  ["reference_code", "SE/RA/420106/01/H IIIa:1"],
+  ["scan_date", "2024-03-15"],
+  ["htr_model", "trocr-v2-riksarkivet"],
+  ["htr_date", "2025-01-10"],
+]);
+const schemaWithMeta = new Schema(table.schema.fields, pageMetadata);
+const tableWithMeta = new Table(schemaWithMeta, table.batches);
+
+const ipc = tableToIPC(tableWithMeta, "stream");
 await Deno.writeFile("static/mock/mock-page-001.arrow", ipc);
 console.log(
   `Generated ${NUM_ROWS} annotations → static/mock/mock-page-001.arrow`,

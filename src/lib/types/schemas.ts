@@ -15,6 +15,8 @@ export const ANNOTATION_COLUMNS = [
   "source",
   "status",
   "reviewer",
+  "group",
+  "metadata",
 ] as const;
 
 export type AnnotationStatus =

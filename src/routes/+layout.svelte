@@ -59,9 +59,9 @@
     </button>
 
     {#if menuOpen}
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
       <div
         class="fixed inset-0 z-40"
+        role="presentation"
         onclick={() => (menuOpen = false)}
       ></div>
       <div class="absolute left-0 top-full z-50 mt-1 w-48 rounded-md border bg-popover p-1 shadow-md">

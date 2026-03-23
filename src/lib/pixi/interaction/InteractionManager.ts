@@ -9,8 +9,8 @@ import { RectTool } from "../tools/RectTool.js";
 import { ScissorsTool } from "../tools/ScissorsTool.js";
 import { isAxisAlignedRect } from "./geometry.js";
 import {
-  CURSOR_DRAW,
   type CommitShape,
+  CURSOR_DRAW,
   type Editor,
   type GeometryUpdate,
   type InteractionContext,
@@ -36,6 +36,12 @@ export class InteractionManager {
 
   // Pointer capture ID — tracked so we can release on pointerup/pointerleave
   private capturedPointerId: number | null = null;
+
+  // Alt+Click cycling state
+  private lastCycleX = -Infinity;
+  private lastCycleY = -Infinity;
+  private cycleHits: number[] = [];
+  private cycleIndex = 0;
 
   onCommit?: (shape: CommitShape) => void;
   onSelect?: (index: number | null) => void;
@@ -298,6 +304,27 @@ export class InteractionManager {
 
     // 3. Select tool — click to select, then drag handles/body on next interaction
     if (this._toolName === "select") {
+      // Alt+Click: cycle through overlapping annotations at this point
+      if (this.modifiers.alt) {
+        const hits = this.arrowPlugin.getAllAnnotationsAtPoint(x, y);
+        if (hits.length > 0) {
+          e.stopImmediatePropagation();
+          // Reset cycle if click position moved
+          const dx = x - this.lastCycleX;
+          const dy = y - this.lastCycleY;
+          if (dx * dx + dy * dy > 25 || hits.length !== this.cycleHits.length) {
+            this.cycleHits = hits;
+            this.cycleIndex = 0;
+          } else {
+            this.cycleIndex = (this.cycleIndex + 1) % this.cycleHits.length;
+          }
+          this.lastCycleX = x;
+          this.lastCycleY = y;
+          this.select(this.cycleHits[this.cycleIndex]);
+          return;
+        }
+      }
+
       const hit = this.arrowPlugin.getAnnotationAtPoint(x, y);
       if (hit !== null) {
         e.stopImmediatePropagation();
@@ -353,7 +380,9 @@ export class InteractionManager {
   private onPointerUp = (e: PointerEvent): void => {
     // Release pointer capture if we own it
     if (this.capturedPointerId !== null) {
-      try { this.canvas.releasePointerCapture(this.capturedPointerId); } catch {}
+      try {
+        this.canvas.releasePointerCapture(this.capturedPointerId);
+      } catch { /* pointer already released */ }
       this.capturedPointerId = null;
     }
 

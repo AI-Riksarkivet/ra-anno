@@ -46,7 +46,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
   }
 
   // Default: return full IPC at once (for small responses / cached data)
-  return new Response(ipc, {
+  return new Response(ipc as unknown as BodyInit, {
     headers: {
       "Content-Type": "application/vnd.apache.arrow.stream",
       ETag: `"mock-${params.pageId}"`,
@@ -61,7 +61,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
   const path = `${MOCK_DIR}/${params.pageId}.arrow`;
   const ipc = await Deno.readFile(path);
 
-  return new Response(ipc, {
+  return new Response(ipc as unknown as BodyInit, {
     headers: {
       "Content-Type": "application/vnd.apache.arrow.stream",
     },

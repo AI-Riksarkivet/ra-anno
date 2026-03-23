@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ params }) => {
     error(404, `Image file not found: ${entry.file}`);
   }
 
-  return new Response(bytes, {
+  return new Response(bytes as unknown as BodyInit, {
     headers: {
       "Content-Type": entry.mime,
       "Cache-Control": "public, max-age=31536000, immutable",

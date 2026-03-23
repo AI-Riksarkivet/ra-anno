@@ -258,7 +258,7 @@ class AnnotationStore {
     const res = await fetch(`/api/annotations/${pageId}`, {
       method: "POST",
       headers: { "Content-Type": "application/vnd.apache.arrow.stream" },
-      body: ipc,
+      body: ipc as unknown as BodyInit,
     });
 
     if (!res.ok) throw new Error(`Save failed: ${res.status}`);

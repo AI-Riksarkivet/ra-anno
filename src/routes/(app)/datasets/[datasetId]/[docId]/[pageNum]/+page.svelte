@@ -6,9 +6,14 @@
   import { statusColor } from "$lib/utils/color.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { undoStack } from "$lib/stores/undo.svelte.js";
+  import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
+  import { setContext } from "svelte";
   import type { PixiContext } from "$lib/pixi/types.js";
   import type { Tool } from "$lib/pixi/types.js";
   import type { AnnotationStatus } from "$lib/types/schemas.js";
+
+  const layerStore = new LayerStore();
+  setContext(LAYER_CTX, layerStore);
 
   let mode = $state<"view" | "edit">("view");
 
@@ -24,14 +29,17 @@
 
   const table = $derived(annotationStore.table(pageId));
 
-  function syncCanvas() {
-    if (!pixiCtx || !table) return;
-    pixiCtx.plugins.arrow.load(table);
-    pixiCtx.plugins.arrow.sync();
-  }
-
+  // Single unified sync: table data + layer config → ArrowDataPlugin → render
   $effect(() => {
-    if (table && pixiCtx) syncCanvas();
+    if (!pixiCtx) return;
+    const t = table;
+    const hidden = layerStore.hiddenGroups;
+    const groupBy = layerStore.groupByColumn;
+    const colors = layerStore.groupColors;
+
+    if (t) pixiCtx.plugins.arrow.load(t);
+    pixiCtx.plugins.arrow.setLayerConfig({ hiddenGroups: hidden, groupByColumn: groupBy, groupColors: colors });
+    pixiCtx.plugins.arrow.sync();
   });
 
   async function handleReady(ctx: PixiContext) {
@@ -58,6 +66,9 @@
         confidence: 1.0,
         source: "manual",
         status: "draft",
+        reviewer: "",
+        group: "",
+        metadata: "{}",
       });
 
       // Auto-switch to Select and select the new annotation

@@ -117,11 +117,9 @@ export class ScissorsTool implements Tool {
     const cv = this.cv;
 
     // Get contour from last anchor to cursor
-    // @ts-expect-error: opencv-js types incomplete for segmentation API
     const contour = new cv.Mat();
     // @ts-expect-error: opencv-js types incomplete for segmentation API
     this.scissorsTool.getContour(
-      // @ts-expect-error: opencv-js types incomplete for segmentation API
       new cv.Point(Math.round(x), Math.round(y)),
       contour,
     );

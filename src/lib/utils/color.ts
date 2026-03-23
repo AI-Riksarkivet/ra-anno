@@ -13,3 +13,11 @@ export function statusColor(status: string): number {
     STATUS_COLORS[status as AnnotationStatus] ?? STATUS_COLORS.prediction
   );
 }
+
+export function colorToHex(n: number): string {
+  return "#" + n.toString(16).padStart(6, "0");
+}
+
+export function hexToColor(hex: string): number {
+  return parseInt(hex.slice(1), 16);
+}

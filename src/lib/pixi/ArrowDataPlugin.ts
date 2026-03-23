@@ -16,6 +16,13 @@ export interface AnnotationStyle {
   strokeAlpha: number;
 }
 
+/** Layer configuration passed from the UI store */
+export interface LayerConfig {
+  hiddenGroups: Set<string>;
+  groupByColumn: string;
+  groupColors: Map<string, number>;
+}
+
 const DEFAULT_STYLE: AnnotationStyle = {
   fillAlpha: 0.08,
   strokeWidth: 1.5,
@@ -27,28 +34,39 @@ export class ArrowDataPlugin {
   private container: Container;
   private colorFn: ColorFn;
   private style: AnnotationStyle;
-  private table: Table | null = null;
   private dirty = false;
 
-  // Batch rendering: one Graphics per status color (5 draw calls, not N)
-  private batchGraphics = new Map<number, Graphics>();
+  // Pixi-native: one Container per group → toggle .visible for instant show/hide
+  private groupContainers = new Map<string, Container>();
 
-  // Highlight layers
+  // Highlight layers (always on top)
   private highlightGraphics: Graphics;
   private hoverGraphics: Graphics;
 
-  // Cached geometry columns (zero-copy Float32Array views)
+  // ── Arrow column cache ──
+  // Only re-materialized when the Table reference changes (tracked via cachedTable).
+  // Float32 columns are zero-copy views into the Arrow buffer — no allocation.
+  // String columns (status, group-by) are materialized once as string[].
+  private cachedTable: Table | null = null;
+  private table: Table | null = null;
+  private numRows = 0;
   private xArr: Float32Array = new Float32Array(0);
   private yArr: Float32Array = new Float32Array(0);
   private wArr: Float32Array = new Float32Array(0);
   private hArr: Float32Array = new Float32Array(0);
-
-  // Cached polygon column for .get(i) access
   private polygonCol: import("apache-arrow").Vector | null = null;
+  private statusStr: string[] = []; // materialized once per table load
+
+  // ── Group-by column cache ──
+  // Re-materialized when table OR groupByColumn changes.
+  private cachedGroupByCol = "";
+  private groupByStr: string[] = []; // materialized once per column switch
+
+  // ── Hidden mask ──
+  // Reused allocation — only grows, never shrinks (avoids GC churn).
+  private hiddenMask: Uint8Array = new Uint8Array(0);
 
   // Dirty overlay — local edits that override Arrow table values
-  // Key: row index, Value: overridden geometry
-  // Never rebuilds the Arrow table — applied only on save()
   private dirtyOverrides = new Map<number, {
     x: number;
     y: number;
@@ -56,6 +74,11 @@ export class ArrowDataPlugin {
     h: number;
     polygon: number[];
   }>();
+
+  // Layer filtering
+  private hiddenGroups: Set<string> = new Set();
+  private groupByColumn: string = "label";
+  private groupColors: Map<string, number> = new Map();
 
   // Viewport culling
   private viewportBounds: ViewportBounds | null = null;
@@ -99,7 +122,7 @@ export class ArrowDataPlugin {
     geo: { x: number; y: number; w: number; h: number; polygon: number[] },
   ): void {
     this.dirtyOverrides.set(index, geo);
-    this.dirty = true; // trigger re-render on next sync
+    this.dirty = true;
   }
 
   /** Get all dirty overrides (for applying to Arrow table on save) */
@@ -117,11 +140,13 @@ export class ArrowDataPlugin {
 
   /** Adjust override indices after a row is deleted (shifts higher indices down) */
   adjustOverridesForDelete(deletedIndex: number): void {
-    const updated = new Map<number, { x: number; y: number; w: number; h: number; polygon: number[] }>();
+    const updated = new Map<
+      number,
+      { x: number; y: number; w: number; h: number; polygon: number[] }
+    >();
     for (const [idx, geo] of this.dirtyOverrides) {
       if (idx < deletedIndex) updated.set(idx, geo);
       else if (idx > deletedIndex) updated.set(idx - 1, geo);
-      // idx === deletedIndex: dropped (row deleted)
     }
     this.dirtyOverrides = updated;
   }
@@ -136,33 +161,95 @@ export class ArrowDataPlugin {
     this.viewportBounds = bounds;
   }
 
+  /** Update all layer filtering state — triggers full rebuild on next sync */
+  setLayerConfig(config: LayerConfig): void {
+    this.hiddenGroups = config.hiddenGroups;
+    this.groupByColumn = config.groupByColumn;
+    this.groupColors = config.groupColors;
+    this.dirty = true;
+  }
+
+  /**
+   * Fast path: toggle a single group's visibility via Pixi Container.visible.
+   * No full sync, no allocation — just flips the flag and re-renders.
+   */
+  setGroupVisible(group: string, visible: boolean): boolean {
+    const c = this.groupContainers.get(group);
+    if (!c) return false;
+    c.visible = visible;
+    // Update hiddenMask using pre-cached string[] — no String() allocation
+    for (let i = 0; i < this.numRows; i++) {
+      if (this.groupByStr[i] === group) {
+        this.hiddenMask[i] = visible ? 0 : 1;
+      }
+    }
+    this.app.render();
+    return true;
+  }
+
   sync(): void {
     if (!this.table || !this.dirty) return;
     this.dirty = false;
 
     const table = this.table;
-    const numRows = table.numRows;
+    this.numRows = table.numRows;
+    const numRows = this.numRows;
 
-    // Cache zero-copy Float32Array views
-    this.xArr = table.getChild("x")!.toArray() as Float32Array;
-    this.yArr = table.getChild("y")!.toArray() as Float32Array;
-    this.wArr = table.getChild("width")!.toArray() as Float32Array;
-    this.hArr = table.getChild("height")!.toArray() as Float32Array;
+    // ── Phase 1: Cache Arrow columns ──
+    // Only re-materialize when the Table reference changes.
+    // Float32 columns → zero-copy views (no allocation)
+    // String columns → materialized once into reusable string[]
+    if (table !== this.cachedTable) {
+      this.cachedTable = table;
+      this.xArr = table.getChild("x")!.toArray() as Float32Array;
+      this.yArr = table.getChild("y")!.toArray() as Float32Array;
+      this.wArr = table.getChild("width")!.toArray() as Float32Array;
+      this.hArr = table.getChild("height")!.toArray() as Float32Array;
+      this.polygonCol = table.getChild("polygon") ?? null;
 
-    // Cache polygon column reference for .get(i) access
-    this.polygonCol = table.getChild("polygon") ?? null;
+      // Materialize status strings once — reused until table changes
+      const statusCol = table.getChild("status");
+      this.statusStr = new Array(numRows);
+      for (let i = 0; i < numRows; i++) {
+        this.statusStr[i] = String(statusCol?.get(i) ?? "prediction");
+      }
 
-    // Pre-batch: convert status column once, group by color
-    const statusArr = table.getChild("status")?.toArray();
-    const colorGroups = new Map<number, number[]>();
-    for (const color of this.batchGraphics.keys()) {
-      colorGroups.set(color, []);
+      // Force group-by column re-cache too
+      this.cachedGroupByCol = "";
     }
 
+    // ── Phase 2: Cache group-by column ──
+    // Only re-materialize when column name changes (or table changed above).
+    if (this.groupByColumn !== this.cachedGroupByCol) {
+      this.cachedGroupByCol = this.groupByColumn;
+      const col = table.getChild(this.groupByColumn);
+      this.groupByStr = new Array(numRows);
+      for (let i = 0; i < numRows; i++) {
+        this.groupByStr[i] = String(col?.get(i) ?? "");
+      }
+    }
+
+    // ── Phase 3: Compute hidden mask ──
+    // Reuse allocation — only grow, never shrink
+    if (this.hiddenMask.length < numRows) {
+      this.hiddenMask = new Uint8Array(numRows);
+    } else {
+      this.hiddenMask.fill(0, 0, numRows);
+    }
+    if (this.hiddenGroups.size > 0) {
+      for (let i = 0; i < numRows; i++) {
+        if (this.hiddenGroups.has(this.groupByStr[i])) {
+          this.hiddenMask[i] = 1;
+        }
+      }
+    }
+
+    // ── Phase 4: Build per-group, per-color row indices ──
     const vp = this.viewportBounds;
+    const grouped = new Map<string, Map<number, number[]>>();
 
     for (let i = 0; i < numRows; i++) {
-      // Viewport culling: skip annotations entirely outside visible area
+      // Viewport culling
       if (vp) {
         const ovr = this.dirtyOverrides.get(i);
         const ax = ovr ? ovr.x : this.xArr[i];
@@ -175,61 +262,92 @@ export class ArrowDataPlugin {
           ay + ah < vp.y ||
           ay > vp.y + vp.height
         ) {
-          continue; // off-screen, skip
+          continue;
         }
       }
 
-      const status = statusArr?.[i] ?? "prediction";
-      const color = this.colorFn(String(status));
-      let group = colorGroups.get(color);
-      if (!group) {
-        group = [];
-        colorGroups.set(color, group);
+      // All lookups are pre-cached string[] — zero allocation in this loop
+      const groupVal = this.groupByStr[i];
+      const groupColor = this.groupColors.get(groupVal);
+      const color = groupColor ?? this.colorFn(this.statusStr[i]);
+
+      let colorMap = grouped.get(groupVal);
+      if (!colorMap) {
+        colorMap = new Map();
+        grouped.set(groupVal, colorMap);
       }
-      group.push(i);
+      let rows = colorMap.get(color);
+      if (!rows) {
+        rows = [];
+        colorMap.set(color, rows);
+      }
+      rows.push(i);
     }
 
-    // Clear all existing batch graphics
-    for (const g of this.batchGraphics.values()) g.clear();
+    // ── Phase 5: Reconcile Pixi containers ──
+    const activeGroups = new Set(grouped.keys());
 
-    // Batch render — create Graphics per color on demand
-    for (const [color, rows] of colorGroups) {
-      let g = this.batchGraphics.get(color);
-      if (!g) {
-        g = new Graphics();
-        this.batchGraphics.set(color, g);
-        // Insert before hover/highlight (which are last children)
+    // Remove stale containers
+    for (const [name, c] of this.groupContainers) {
+      if (!activeGroups.has(name)) {
+        c.destroy({ children: true });
+        this.groupContainers.delete(name);
+      }
+    }
+
+    // Create/update containers per group
+    for (const [groupName, colorMap] of grouped) {
+      let gc = this.groupContainers.get(groupName);
+      if (!gc) {
+        gc = new Container();
+        gc.label = `group:${groupName}`;
+        this.groupContainers.set(groupName, gc);
         const insertIdx = Math.max(0, this.container.children.length - 2);
-        this.container.addChildAt(g, insertIdx);
+        this.container.addChildAt(gc, insertIdx);
       }
 
-      for (const i of rows) {
-        // Check dirty overlay first — local edits override Arrow data
-        const override = this.dirtyOverrides.get(i);
-        if (override) {
-          g.poly(override.polygon, true);
-        } else {
-          const poly = this.getPolygonSlice(i);
-          if (poly && poly.length >= 6) {
-            g.poly(poly, true);
-          } else {
-            g.rect(this.xArr[i], this.yArr[i], this.wArr[i], this.hArr[i]);
-          }
+      // Pixi-native visibility — no row iteration needed
+      gc.visible = !this.hiddenGroups.has(groupName);
+
+      // Clear old Graphics from this container
+      for (const child of [...gc.children]) {
+        child.destroy();
+      }
+      gc.removeChildren();
+
+      // Create Graphics per color within the group container
+      for (const [color, rows] of colorMap) {
+        const g = new Graphics();
+        for (const i of rows) {
+          this.drawAnnotation(g, i);
         }
+        g.fill({ color, alpha: this.style.fillAlpha });
+        g.stroke({
+          color,
+          width: this.style.strokeWidth,
+          alpha: this.style.strokeAlpha,
+        });
+        gc.addChild(g);
       }
-
-      g.fill({ color, alpha: this.style.fillAlpha });
-      g.stroke({
-        color,
-        width: this.style.strokeWidth,
-        alpha: this.style.strokeAlpha,
-      });
     }
 
     this.highlightGraphics.clear();
-
-    // Render on demand
     this.app.render();
+  }
+
+  /** Draw a single annotation shape into a Graphics object */
+  private drawAnnotation(g: Graphics, i: number): void {
+    const override = this.dirtyOverrides.get(i);
+    if (override) {
+      g.poly(override.polygon, true);
+    } else {
+      const poly = this.getPolygonSlice(i);
+      if (poly && poly.length >= 6) {
+        g.poly(poly, true);
+      } else {
+        g.rect(this.xArr[i], this.yArr[i], this.wArr[i], this.hArr[i]);
+      }
+    }
   }
 
   /** Get geometry for a single annotation — checks dirty overlay first */
@@ -291,15 +409,21 @@ export class ArrowDataPlugin {
     this.app.render();
   }
 
+  /** Smallest visible annotation at point (used for hover + normal click) */
   getAnnotationAtPoint(x: number, y: number): number | null {
-    if (!this.table) return null;
+    const hits = this.getAllAnnotationsAtPoint(x, y);
+    return hits.length > 0 ? hits[0] : null;
+  }
 
-    // Iterate backwards (last drawn = on top) — same as original proven approach
-    // Check dirty overrides so moved annotations are still hittable
-    let bestIdx: number | null = null;
-    let bestArea = Infinity;
+  /** All visible annotations at point, sorted by area ascending (smallest first) */
+  getAllAnnotationsAtPoint(x: number, y: number): number[] {
+    if (!this.table) return [];
 
-    for (let i = this.table.numRows - 1; i >= 0; i--) {
+    const hits: { index: number; area: number }[] = [];
+
+    for (let i = 0; i < this.numRows; i++) {
+      if (this.hiddenMask[i]) continue;
+
       const override = this.dirtyOverrides.get(i);
       const ax = override ? override.x : this.xArr[i];
       const ay = override ? override.y : this.yArr[i];
@@ -312,29 +436,24 @@ export class ArrowDataPlugin {
         y >= ay &&
         y <= ay + ah
       ) {
-        // For non-rect polygons, do precise point-in-polygon test
         const poly = override?.polygon ?? this.getPolygonSlice(i);
         if (poly && poly.length >= 6 && !isAxisAlignedRect(poly)) {
           if (!pointInPolygon(x, y, poly)) continue;
         }
 
-        // Smallest area wins (most specific annotation when overlapping)
-        const area = aw * ah;
-        if (area < bestArea) {
-          bestArea = area;
-          bestIdx = i;
-        }
+        hits.push({ index: i, area: aw * ah });
       }
     }
 
-    return bestIdx;
+    hits.sort((a, b) => a.area - b.area);
+    return hits.map((h) => h.index);
   }
 
   destroy(): void {
-    for (const g of this.batchGraphics.values()) {
-      g.destroy();
+    for (const [, c] of this.groupContainers) {
+      c.destroy({ children: true });
     }
-    this.batchGraphics.clear();
+    this.groupContainers.clear();
     this.hoverGraphics.destroy();
     this.highlightGraphics.destroy();
     this.container.destroy({ children: true });
@@ -345,7 +464,6 @@ export class ArrowDataPlugin {
     if (!this.polygonCol) return null;
     const val = this.polygonCol.get(i);
     if (!val || val.length === 0) return null;
-    // Arrow Vector doesn't support bracket indexing — convert to plain array
     const arr = new Array(val.length);
     for (let j = 0; j < val.length; j++) {
       arr[j] = val.get(j);
