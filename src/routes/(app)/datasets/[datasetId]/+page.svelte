@@ -139,75 +139,82 @@
   });
 </script>
 
-<div class="flex h-full flex-col">
-  <!-- Header bar -->
-  <div class="flex items-center gap-3 border-b px-4 py-2">
-    <Grid2x2 class="h-5 w-5 text-muted-foreground" />
-    <h1 class="text-sm font-medium">{datasetId}</h1>
-    <Separator orientation="vertical" class="h-5" />
-    <span class="text-sm text-muted-foreground">{total} pages</span>
-
-    <!-- Search -->
-    <div class="relative ml-4 w-48">
-      <Search class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        class="h-7 pl-7 text-xs"
-        placeholder="Search pages..."
-        value={searchQuery}
-        oninput={(e) => {
-          searchQuery = e.currentTarget.value;
-          debounceSearch(searchQuery);
-        }}
-      />
+<div class="flex h-full">
+  <!-- Left panel: filters & search -->
+  <div class="flex h-full w-52 flex-col border-r bg-background">
+    <div class="border-b p-3">
+      <div class="relative">
+        <Search class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          class="h-8 pl-7 text-xs"
+          placeholder="Search pages..."
+          value={searchQuery}
+          oninput={(e) => {
+            searchQuery = e.currentTarget.value;
+            debounceSearch(searchQuery);
+          }}
+        />
+      </div>
     </div>
 
-    <!-- Dynamic enum filters -->
-    {#each enumColumns as col (col.name)}
-      <div class="flex items-center gap-0.5">
-        <span class="text-xs text-muted-foreground">{col.name}:</span>
-        {#each col.values ?? [] as val (val)}
-          <Button
-            variant={activeFilters[col.name] === val ? "default" : "outline"}
-            size="sm"
-            class="h-5 px-1.5 text-[10px]"
-            onclick={() => toggleFilter(col.name, val)}
-          >
-            {#if col.name === "status"}
-              <span class="mr-0.5 inline-block h-1.5 w-1.5 rounded-full {statusColors[val] ?? 'bg-gray-400'}"></span>
-            {/if}
-            {val}
-          </Button>
-        {/each}
-      </div>
-    {/each}
+    <div class="flex-1 overflow-y-auto p-3">
+      {#each enumColumns as col (col.name)}
+        <div class="mb-3">
+          <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{col.name}</span>
+          <div class="flex flex-wrap gap-1">
+            {#each col.values ?? [] as val (val)}
+              <Button
+                variant={activeFilters[col.name] === val ? "default" : "outline"}
+                size="sm"
+                class="h-6 px-2 text-[10px]"
+                onclick={() => toggleFilter(col.name, val)}
+              >
+                {#if col.name === "status"}
+                  <span class="mr-1 inline-block h-1.5 w-1.5 rounded-full {statusColors[val] ?? 'bg-gray-400'}"></span>
+                {/if}
+                {val}
+              </Button>
+            {/each}
+          </div>
+        </div>
+      {/each}
+    </div>
 
     {#if filterCount > 0 || searchDebounced}
-      <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" onclick={clearFilters}>
-        <X class="mr-1 h-3 w-3" />
-        Clear
-      </Button>
+      <div class="border-t p-2">
+        <Button variant="ghost" size="sm" class="w-full text-xs" onclick={clearFilters}>
+          <X class="mr-1 h-3 w-3" />
+          Clear {filterCount} filter{filterCount !== 1 ? 's' : ''}
+        </Button>
+      </div>
     {/if}
-
-    <!-- View toggle + sort -->
-    <div class="ml-auto flex items-center gap-1">
-      <Button
-        variant={viewMode === "grid" ? "default" : "ghost"}
-        size="sm"
-        class="h-7 w-7 p-0"
-        onclick={() => (viewMode = "grid")}
-      >
-        <Grid2x2 class="h-4 w-4" />
-      </Button>
-      <Button
-        variant={viewMode === "table" ? "default" : "ghost"}
-        size="sm"
-        class="h-7 w-7 p-0"
-        onclick={() => (viewMode = "table")}
-      >
-        <List class="h-4 w-4" />
-      </Button>
-    </div>
   </div>
+
+  <!-- Right: content area -->
+  <div class="flex flex-1 flex-col">
+    <!-- Compact top bar -->
+    <div class="flex items-center gap-3 border-b px-4 py-1.5">
+      <span class="text-sm font-medium">{total} pages</span>
+
+      <div class="ml-auto flex items-center gap-1">
+        <Button
+          variant={viewMode === "grid" ? "default" : "ghost"}
+          size="sm"
+          class="h-7 w-7 p-0"
+          onclick={() => (viewMode = "grid")}
+        >
+          <Grid2x2 class="h-4 w-4" />
+        </Button>
+        <Button
+          variant={viewMode === "table" ? "default" : "ghost"}
+          size="sm"
+          class="h-7 w-7 p-0"
+          onclick={() => (viewMode = "table")}
+        >
+          <List class="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
 
   <!-- Content -->
   <div class="flex-1 overflow-y-auto">
@@ -329,4 +336,5 @@
       </div>
     </div>
   {/if}
+  </div>
 </div>

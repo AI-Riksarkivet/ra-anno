@@ -183,7 +183,8 @@
   }}
 />
 
-<div class="flex h-full flex-col">
+<div class="flex h-full">
+  <!-- Left: vertical toolbar -->
   <Toolbar
     {mode}
     onToggleMode={handleToggleMode}
@@ -198,23 +199,23 @@
     onSave={handleSave}
   />
 
-  <div class="flex flex-1 overflow-hidden">
-    <div class="relative flex-1">
-      <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
-    </div>
-
-    <AnnotationSidebar
-      {table}
-      {selectedIndex}
-      onSelect={(i) => {
-        selectedIndex = i;
-        pixiCtx?.plugins.interaction.select(i);
-      }}
-      onUpdateField={handleUpdateField}
-      onUpdateStatus={handleUpdateStatus}
-      onDelete={handleDelete}
-    />
+  <!-- Center: canvas -->
+  <div class="relative flex-1">
+    <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
   </div>
+
+  <!-- Right: annotation sidebar -->
+  <AnnotationSidebar
+    {table}
+    {selectedIndex}
+    onSelect={(i) => {
+      selectedIndex = i;
+      pixiCtx?.plugins.interaction.select(i);
+    }}
+    onUpdateField={handleUpdateField}
+    onUpdateStatus={handleUpdateStatus}
+    onDelete={handleDelete}
+  />
 </div>
 
 <KeyboardShortcuts />
