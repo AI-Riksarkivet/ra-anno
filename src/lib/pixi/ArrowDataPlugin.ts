@@ -8,10 +8,24 @@ const DEFAULT_COLOR = 0x8b5cf6; // purple
 /** Function that maps a status string to a hex color */
 export type ColorFn = (status: string) => number;
 
+/** Visual style for annotation rendering */
+export interface AnnotationStyle {
+  fillAlpha: number;
+  strokeWidth: number;
+  strokeAlpha: number;
+}
+
+const DEFAULT_STYLE: AnnotationStyle = {
+  fillAlpha: 0.08,
+  strokeWidth: 1.5,
+  strokeAlpha: 0.8,
+};
+
 export class ArrowDataPlugin {
   private app: Application;
   private container: Container;
   private colorFn: ColorFn;
+  private style: AnnotationStyle;
   private table: Table | null = null;
   private dirty = false;
 
@@ -45,9 +59,14 @@ export class ArrowDataPlugin {
   // Viewport culling
   private viewportBounds: ViewportBounds | null = null;
 
-  constructor(app: Application, colorFn?: ColorFn) {
+  constructor(
+    app: Application,
+    colorFn?: ColorFn,
+    style?: Partial<AnnotationStyle>,
+  ) {
     this.app = app;
     this.colorFn = colorFn ?? (() => DEFAULT_COLOR);
+    this.style = { ...DEFAULT_STYLE, ...style };
     this.container = new Container();
     this.container.label = "annotations";
     this.container.cullable = true;
@@ -64,6 +83,12 @@ export class ArrowDataPlugin {
 
   load(table: Table): void {
     this.table = table;
+    this.dirty = true;
+  }
+
+  /** Update visual style and re-render */
+  setStyle(style: Partial<AnnotationStyle>): void {
+    this.style = { ...this.style, ...style };
     this.dirty = true;
   }
 
@@ -180,8 +205,12 @@ export class ArrowDataPlugin {
         }
       }
 
-      g.fill({ color, alpha: 0.15 });
-      g.stroke({ color, width: 2 });
+      g.fill({ color, alpha: this.style.fillAlpha });
+      g.stroke({
+        color,
+        width: this.style.strokeWidth,
+        alpha: this.style.strokeAlpha,
+      });
     }
 
     this.highlightGraphics.clear();

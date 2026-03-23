@@ -14,6 +14,7 @@
     panX = $bindable(0),
     panY = $bindable(0),
     colorFn,
+    annotationStyle,
     onready,
   }: {
     children?: Snippet;
@@ -21,6 +22,7 @@
     panX?: number;
     panY?: number;
     colorFn?: (status: string) => number;
+    annotationStyle?: { fillAlpha?: number; strokeWidth?: number; strokeAlpha?: number };
     onready?: (ctx: PixiContext) => void;
   } = $props();
 
@@ -63,7 +65,7 @@
       containerEl.appendChild(app.canvas);
 
       imagePlugin = new ImagePlugin(app);
-      arrowPlugin = new ArrowDataPlugin(app, colorFn);
+      arrowPlugin = new ArrowDataPlugin(app, colorFn, annotationStyle);
       interaction = new InteractionManager(app, arrowPlugin);
 
       imagePlugin.canPan = () => interaction.currentTool === "select";
