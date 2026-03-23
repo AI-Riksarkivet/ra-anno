@@ -114,14 +114,31 @@ class AnnotationStore {
     const cols: Record<string, unknown[]> = {};
     for (const field of existing.schema.fields) {
       const col = existing.getChild(field.name)!;
-      const arr = col.toArray();
-      if (field.name in updates) {
-        const copy = Array.from(arr);
-        copy[rowIndex] = updates[field.name];
-        cols[field.name] = copy;
-      } else {
-        cols[field.name] = Array.from(arr);
+      const n = existing.numRows;
+
+      // For list columns (e.g. polygon), we must convert each row individually
+      // because col.toArray() returns Arrow Vectors, not plain arrays
+      const isListCol = field.name === "polygon";
+
+      const arr: unknown[] = new Array(n);
+      for (let i = 0; i < n; i++) {
+        if (i === rowIndex && field.name in updates) {
+          arr[i] = updates[field.name];
+        } else if (isListCol) {
+          // Convert Arrow Vector row to plain number array
+          const val = col.get(i);
+          if (val && val.length > 0) {
+            const plain = new Array(val.length);
+            for (let j = 0; j < val.length; j++) plain[j] = val.get(j);
+            arr[i] = plain;
+          } else {
+            arr[i] = null;
+          }
+        } else {
+          arr[i] = col.get(i);
+        }
       }
+      cols[field.name] = arr;
     }
 
     const updated = tableFromArrays(cols);
@@ -140,10 +157,22 @@ class AnnotationStore {
     const cols: Record<string, unknown[]> = {};
     for (const field of existing.schema.fields) {
       const col = existing.getChild(field.name)!;
-      const src = col.toArray();
+      const isListCol = field.name === "polygon";
       const dst = new Array(n - 1);
       for (let i = 0, j = 0; i < n; i++) {
-        if (i !== rowIndex) dst[j++] = src[i];
+        if (i === rowIndex) continue;
+        if (isListCol) {
+          const val = col.get(i);
+          if (val && val.length > 0) {
+            const plain = new Array(val.length);
+            for (let k = 0; k < val.length; k++) plain[k] = val.get(k);
+            dst[j++] = plain;
+          } else {
+            dst[j++] = null;
+          }
+        } else {
+          dst[j++] = col.get(i);
+        }
       }
       cols[field.name] = dst;
     }
