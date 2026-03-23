@@ -31,6 +31,17 @@ export class ArrowDataPlugin {
   // Cached polygon column for .get(i) access
   private polygonCol: import("apache-arrow").Vector | null = null;
 
+  // Dirty overlay — local edits that override Arrow table values
+  // Key: row index, Value: overridden geometry
+  // Never rebuilds the Arrow table — applied only on save()
+  private dirtyOverrides = new Map<number, {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    polygon: number[];
+  }>();
+
   // Viewport culling
   private viewportBounds: ViewportBounds | null = null;
 
@@ -54,6 +65,33 @@ export class ArrowDataPlugin {
   load(table: Table): void {
     this.table = table;
     this.dirty = true;
+  }
+
+  /** Set a dirty override for a specific row (local edit, no table rebuild) */
+  setOverride(
+    index: number,
+    geo: { x: number; y: number; w: number; h: number; polygon: number[] },
+  ): void {
+    this.dirtyOverrides.set(index, geo);
+    this.dirty = true; // trigger re-render on next sync
+  }
+
+  /** Get all dirty overrides (for applying to Arrow table on save) */
+  getDirtyOverrides(): ReadonlyMap<
+    number,
+    { x: number; y: number; w: number; h: number; polygon: number[] }
+  > {
+    return this.dirtyOverrides;
+  }
+
+  /** Clear all dirty overrides (after save) */
+  clearOverrides(): void {
+    this.dirtyOverrides.clear();
+  }
+
+  /** Check if there are unsaved geometry edits */
+  hasDirtyOverrides(): boolean {
+    return this.dirtyOverrides.size > 0;
   }
 
   /** Update viewport bounds for culling */
@@ -128,11 +166,17 @@ export class ArrowDataPlugin {
       }
 
       for (const i of rows) {
-        const poly = this.getPolygonSlice(i);
-        if (poly && poly.length >= 6) {
-          g.poly(poly, true);
+        // Check dirty overlay first — local edits override Arrow data
+        const override = this.dirtyOverrides.get(i);
+        if (override) {
+          g.poly(override.polygon, true);
         } else {
-          g.rect(this.xArr[i], this.yArr[i], this.wArr[i], this.hArr[i]);
+          const poly = this.getPolygonSlice(i);
+          if (poly && poly.length >= 6) {
+            g.poly(poly, true);
+          } else {
+            g.rect(this.xArr[i], this.yArr[i], this.wArr[i], this.hArr[i]);
+          }
         }
       }
 
@@ -143,14 +187,24 @@ export class ArrowDataPlugin {
     this.highlightGraphics.clear();
   }
 
-  /** Get geometry for a single annotation by row index */
+  /** Get geometry for a single annotation — checks dirty overlay first */
   getGeometry(index: number): {
     x: number;
     y: number;
     w: number;
     h: number;
-    polygon: Float64Array | Float32Array | null;
+    polygon: number[] | null;
   } {
+    const override = this.dirtyOverrides.get(index);
+    if (override) {
+      return {
+        x: override.x,
+        y: override.y,
+        w: override.w,
+        h: override.h,
+        polygon: override.polygon,
+      };
+    }
     return {
       x: this.xArr[index],
       y: this.yArr[index],

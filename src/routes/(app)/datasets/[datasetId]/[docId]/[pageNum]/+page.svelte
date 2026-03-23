@@ -71,16 +71,8 @@
       selectedIndex = index;
     };
 
-    // Editor handle drags → update Arrow store
-    ctx.plugins.interaction.onChange = (index, updates) => {
-      annotationStore.updateLocal(pageId, index, {
-        x: updates.x,
-        y: updates.y,
-        width: updates.w,
-        height: updates.h,
-        polygon: updates.polygon,
-      });
-    };
+    // Editor handle drags → dirty overlay (NO Arrow table rebuild)
+    // Arrow table only rebuilt on Save
   }
 
   function handleToggleMode() {
@@ -110,6 +102,20 @@
   }
 
   async function handleSave() {
+    // Apply dirty geometry overrides to Arrow table before saving
+    if (pixiCtx) {
+      const overrides = pixiCtx.plugins.arrow.getDirtyOverrides();
+      for (const [index, geo] of overrides) {
+        annotationStore.updateLocal(pageId, index, {
+          x: geo.x,
+          y: geo.y,
+          width: geo.w,
+          height: geo.h,
+          polygon: geo.polygon,
+        });
+      }
+      pixiCtx.plugins.arrow.clearOverrides();
+    }
     await annotationStore.save(pageId);
   }
 

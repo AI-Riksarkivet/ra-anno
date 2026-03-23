@@ -350,11 +350,20 @@ export class InteractionManager {
       this.activeEditor.drag(x, y);
       this.activeEditor.endDrag();
 
-      // NOW commit the final geometry to the Arrow table (one update, not per-frame)
+      // Write to dirty overlay — Arrow table NOT rebuilt
+      // Table only rebuilds on Save (when we POST to server anyway)
       if (this.selectedIndex !== null) {
-        const finalGeometry = this.activeEditor.getGeometry();
-        if (finalGeometry) {
-          this.onChange?.(this.selectedIndex, finalGeometry);
+        const geo = this.activeEditor.getGeometry();
+        if (geo) {
+          this.arrowPlugin.setOverride(this.selectedIndex, {
+            x: geo.x,
+            y: geo.y,
+            w: geo.w,
+            h: geo.h,
+            polygon: geo.polygon ?? [],
+          });
+          // Re-sync the batch renderer to show the updated geometry
+          this.arrowPlugin.sync();
         }
       }
       return;
