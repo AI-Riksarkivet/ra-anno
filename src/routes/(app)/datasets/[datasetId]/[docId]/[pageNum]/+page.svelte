@@ -85,6 +85,7 @@
 
   function handleToggleMode() {
     mode = mode === "view" ? "edit" : "view";
+    pixiCtx?.plugins.interaction.setEditMode(mode === "edit");
     if (mode === "view") {
       activeTool = "select";
       pixiCtx?.plugins.interaction.setTool("select");

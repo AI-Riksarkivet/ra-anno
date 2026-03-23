@@ -7,6 +7,8 @@
   import { statusColor } from "$lib/utils/color.js";
   import type { AnnotationStatus } from "$lib/types/schemas.js";
 
+  let collapsed = $state(false);
+
   let {
     table = null,
     selectedIndex = null,
@@ -45,7 +47,36 @@
   );
 </script>
 
+<script module lang="ts">
+  import PanelRightClose from "@lucide/svelte/icons/panel-right-close";
+  import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
+</script>
+
+{#snippet collapseToggle()}
+  <button
+    class="flex h-8 w-8 items-center justify-center rounded hover:bg-muted"
+    onclick={() => (collapsed = !collapsed)}
+    title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+  >
+    {#if collapsed}
+      <PanelRightOpen class="h-4 w-4 text-muted-foreground" />
+    {:else}
+      <PanelRightClose class="h-4 w-4 text-muted-foreground" />
+    {/if}
+  </button>
+{/snippet}
+
+{#if collapsed}
+  <div class="flex h-full w-10 flex-col items-center border-l bg-card pt-2">
+    {@render collapseToggle()}
+  </div>
+{:else}
 <div class="flex h-full w-72 flex-col border-l bg-card">
+  <div class="flex items-center justify-between border-b px-2 py-1">
+    <span class="text-xs font-medium text-muted-foreground">Annotations</span>
+    {@render collapseToggle()}
+  </div>
+
   {#if selected && selectedIndex !== null}
     <div class="border-b p-3">
       <div class="flex items-center justify-between">
@@ -169,3 +200,4 @@
     </div>
   {/if}
 </div>
+{/if}

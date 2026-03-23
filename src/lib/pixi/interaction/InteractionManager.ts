@@ -31,13 +31,10 @@ export class InteractionManager {
   private selectedIndex: number | null = null;
   private selectedSet = new Set<number>();
   private modifiers: Modifiers = { shift: false, ctrl: false, alt: false };
+  private _editMode = false;
 
   private canvasRect: DOMRect | null = null;
   private resizeObserver: ResizeObserver | null = null;
-
-  // Throttle onChange during drags — skip frames to avoid 60fps Arrow rebuilds
-  private dragFrameCount = 0;
-  private static readonly DRAG_THROTTLE = 3; // emit every 3rd frame
 
   onCommit?: (shape: CommitShape) => void;
   onSelect?: (index: number | null) => void;
@@ -92,6 +89,15 @@ export class InteractionManager {
     this.canvas.style.cursor = this.activeTool ? "crosshair" : "default";
   }
 
+  /** Set edit mode — when false, no editing, no handles, view only */
+  setEditMode(enabled: boolean): void {
+    this._editMode = enabled;
+    if (!enabled) {
+      this.activeEditor?.detach();
+      this.activeEditor = null;
+    }
+  }
+
   /** Update modifier key state — called by the page component's keyboard handler */
   setModifiers(shift: boolean, ctrl: boolean, alt: boolean): void {
     this.modifiers.shift = shift;
@@ -124,8 +130,8 @@ export class InteractionManager {
 
     this.selectedIndex = index;
 
-    // Attach editor to the primary selected annotation
-    if (index !== null) {
+    // Attach editor only in edit mode
+    if (index !== null && this._editMode) {
       const { x, y, w, h, polygon } = this.arrowPlugin.getGeometry(index);
 
       if (polygon && polygon.length >= 6 && !isAxisAlignedRect(polygon)) {
@@ -242,16 +248,6 @@ export class InteractionManager {
     return this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
   }
 
-  private throttledChange(
-    index: number,
-    updates: GeometryUpdate,
-  ): void {
-    this.dragFrameCount++;
-    if (this.dragFrameCount % InteractionManager.DRAG_THROTTLE === 0) {
-      this.onChange?.(index, updates);
-    }
-  }
-
   private setupEvents(): void {
     // Capture phase — fires BEFORE ImagePlugin's bubble-phase handlers
     // so we can stopImmediatePropagation to block panning during edits/draws
@@ -281,7 +277,6 @@ export class InteractionManager {
       const handle = this.activeEditor.hitTestHandle(x, y);
       if (handle) {
         e.stopImmediatePropagation();
-        this.dragFrameCount = 0;
         this.activeEditor.startDrag(handle, x, y);
         return;
       }
@@ -355,7 +350,6 @@ export class InteractionManager {
       this.activeEditor.drag(x, y);
       this.activeEditor.endDrag();
       // Final onChange — emit without throttle
-      this.dragFrameCount = 0;
       return;
     }
 
