@@ -20,6 +20,7 @@
   const layers = getContext<LayerStore>(LAYER_CTX);
 
   let collapsed = $state(false);
+  let listCollapsed = $state(false);
   let filterText = $state("");
   let collapsedGroups = $state(new Set<string>());
   let creatingLabel = $state(false);
@@ -208,6 +209,21 @@
     {@render collapseToggle()}
   </div>
 
+  <!-- Page metadata (from Arrow schema) -->
+  {#if pageMeta}
+    <details class="border-b">
+      <summary class="cursor-pointer px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent">
+        Page info
+      </summary>
+      <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-3 pb-2 text-xs">
+        {#each Object.entries(pageMeta) as [key, value] (key)}
+          <span class="text-muted-foreground">{key.replace(/_/g, " ")}</span>
+          <span class="truncate font-mono">{value}</span>
+        {/each}
+      </div>
+    </details>
+  {/if}
+
   <!-- Layer panel -->
   <LayerPanel {table} />
 
@@ -225,21 +241,6 @@
         {/if}
       {/each}
     </div>
-  {/if}
-
-  <!-- Page metadata (from Arrow schema) -->
-  {#if pageMeta}
-    <details class="border-b">
-      <summary class="cursor-pointer px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent">
-        Page info
-      </summary>
-      <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 px-3 pb-2 text-xs">
-        {#each Object.entries(pageMeta) as [key, value] (key)}
-          <span class="text-muted-foreground">{key.replace(/_/g, " ")}</span>
-          <span class="truncate font-mono">{value}</span>
-        {/each}
-      </div>
-    </details>
   {/if}
 
   {#if isMultiSelect}
@@ -479,81 +480,86 @@
       {/if}
     </div>
   {:else}
-    <!-- Collapsible annotation list section -->
-    <details class="flex min-h-0 flex-1 flex-col" open>
-      <summary class="flex cursor-pointer items-center gap-2 border-b px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent">
-        Annotations
-        <span class="ml-auto tabular-nums">{table?.numRows ?? 0}</span>
-      </summary>
+    <!-- Annotation list header (collapses search + all groups) -->
+    <button
+      class="flex w-full items-center gap-1.5 border-b bg-muted/30 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/60"
+      title={listCollapsed ? "Show annotation list" : "Hide annotation list"}
+      onclick={() => (listCollapsed = !listCollapsed)}
+    >
+      {#if listCollapsed}
+        <ChevronRight class="h-3 w-3 shrink-0" />
+      {:else}
+        <ChevronDown class="h-3 w-3 shrink-0" />
+      {/if}
+      <span class="flex-1">Annotation list</span>
+      <span class="tabular-nums text-[10px]">{table?.numRows ?? 0}</span>
+    </button>
 
-      <div class="flex min-h-0 flex-1 flex-col">
-        <!-- Search filter -->
-        <div class="flex items-center gap-2 border-b px-3 py-1.5">
-          <Search class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <input
-            type="text"
-            class="h-6 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            placeholder="Filter..."
-            bind:value={filterText}
-          />
-        </div>
-
-        <!-- Grouped annotation list -->
-        <div class="flex-1 overflow-y-auto p-1.5">
-          {#if groupedAnnotations.length > 0}
-            <div class="flex flex-col gap-1">
-              {#each groupedAnnotations as group (group.name)}
-                {@const isCollapsed = collapsedGroups.has(group.name)}
-                <div class="overflow-hidden rounded-md border bg-card">
-                  <!-- Group header -->
-                  <button
-                    class="flex w-full items-center gap-1.5 bg-muted/50 px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/80"
-                    onclick={() => toggleGroupCollapse(group.name)}
-                  >
-                    {#if isCollapsed}
-                      <ChevronRight class="h-3 w-3 shrink-0" />
-                    {:else}
-                      <ChevronDown class="h-3 w-3 shrink-0" />
-                    {/if}
-                    <span class="flex-1 truncate">{group.name || "ungrouped"}</span>
-                    <span class="tabular-nums text-[10px]">{group.items.length}</span>
-                  </button>
-
-                  <!-- Group items -->
-                  {#if !isCollapsed}
-                    <div class="divide-y divide-border/50">
-                      {#each group.items as ann (ann.index)}
-                        <button
-                          class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-accent/50"
-                          class:bg-accent={selectedIndex === ann.index}
-                          onclick={() => onSelect?.(ann.index)}
-                        >
-                          <span
-                            class="h-2 w-2 shrink-0 rounded-full"
-                            style="background-color: {colorToHex(statusColor(ann.status))}"
-                          ></span>
-                          <div class="flex-1 overflow-hidden">
-                            <p class="truncate text-xs font-medium">{ann.label || "unlabeled"}</p>
-                            {#if ann.text}
-                              <p class="truncate text-[11px] text-muted-foreground">{ann.text}</p>
-                            {/if}
-                          </div>
-                          <Badge class="shrink-0 scale-90 {statusClasses[ann.status] ?? ''}">{ann.status}</Badge>
-                        </button>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {:else if filterText}
-            <p class="p-3 text-sm text-muted-foreground">No matches</p>
-          {:else}
-            <p class="p-3 text-sm text-muted-foreground">No annotations</p>
-          {/if}
-        </div>
+    {#if !listCollapsed}
+      <!-- Search filter -->
+      <div class="flex items-center gap-2 border-b px-3 py-1.5">
+        <Search class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <input
+          type="text"
+          class="h-6 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          placeholder="Filter..."
+          bind:value={filterText}
+        />
       </div>
-    </details>
+
+      <!-- Grouped annotation list -->
+      <div class="flex-1 overflow-y-auto p-1.5">
+        {#if groupedAnnotations.length > 0}
+          <div class="flex flex-col gap-1">
+            {#each groupedAnnotations as group (group.name)}
+              {@const isCollapsed = collapsedGroups.has(group.name)}
+              <div class="overflow-hidden rounded-md border bg-card">
+                <button
+                  class="flex w-full items-center gap-1.5 bg-muted/50 px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/80"
+                  onclick={() => toggleGroupCollapse(group.name)}
+                >
+                  {#if isCollapsed}
+                    <ChevronRight class="h-3 w-3 shrink-0" />
+                  {:else}
+                    <ChevronDown class="h-3 w-3 shrink-0" />
+                  {/if}
+                  <span class="flex-1 truncate">{group.name || "ungrouped"}</span>
+                  <span class="tabular-nums text-[10px]">{group.items.length}</span>
+                </button>
+
+                {#if !isCollapsed}
+                  <div class="divide-y divide-border/50">
+                    {#each group.items as ann (ann.index)}
+                      <button
+                        class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-accent/50"
+                        class:bg-accent={selectedIndex === ann.index}
+                        onclick={() => onSelect?.(ann.index)}
+                      >
+                        <span
+                          class="h-2 w-2 shrink-0 rounded-full"
+                          style="background-color: {colorToHex(statusColor(ann.status))}"
+                        ></span>
+                        <div class="flex-1 overflow-hidden">
+                          <p class="truncate text-xs font-medium">{ann.label || "unlabeled"}</p>
+                          {#if ann.text}
+                            <p class="truncate text-[11px] text-muted-foreground">{ann.text}</p>
+                          {/if}
+                        </div>
+                        <Badge class="shrink-0 scale-90 {statusClasses[ann.status] ?? ''}">{ann.status}</Badge>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {:else if filterText}
+          <p class="p-3 text-sm text-muted-foreground">No matches</p>
+        {:else}
+          <p class="p-3 text-sm text-muted-foreground">No annotations</p>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>
 {/if}

@@ -213,8 +213,5 @@
     {#if isDirty}
       <div class="h-2 w-2 rounded-full bg-amber-500" title="Unsaved changes"></div>
     {/if}
-    {#if annotationCount > 0}
-      <span class="text-[9px] text-muted-foreground">{annotationCount}</span>
-    {/if}
   </div>
 </div>
