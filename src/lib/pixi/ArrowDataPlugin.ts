@@ -161,6 +161,24 @@ export class ArrowDataPlugin {
     this.viewportBounds = bounds;
   }
 
+  /**
+   * Patch a cached string value for a specific row.
+   * Used for field edits (label, status, group) that affect rendering
+   * WITHOUT triggering a full Phase 1 re-cache from the Arrow table.
+   */
+  setFieldOverride(index: number, field: string, value: string): void {
+    if (field === "status" && index < this.statusStr.length) {
+      this.statusStr[index] = value;
+      this.dirty = true;
+    }
+    if (
+      field === this.groupByColumn && index < this.groupByStr.length
+    ) {
+      this.groupByStr[index] = value;
+      this.dirty = true;
+    }
+  }
+
   /** Update all layer filtering state — triggers full rebuild on next sync */
   setLayerConfig(config: LayerConfig): void {
     this.hiddenGroups = config.hiddenGroups;

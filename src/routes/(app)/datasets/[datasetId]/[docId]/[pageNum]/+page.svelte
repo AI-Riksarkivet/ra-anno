@@ -27,18 +27,27 @@
 
   const pageId = "mock-page-001";
 
+  // Materialized table (base + overlays) — for sidebar UI
   const table = $derived(annotationStore.table(pageId));
+  // Server table (stable reference) — for Pixi rendering (zero-copy Float32 views)
+  const serverTable = $derived(annotationStore.serverTable(pageId));
 
-  // Single unified sync: table data + layer config → ArrowDataPlugin → render
+  // Pixi reads from the server table (stable, zero-copy).
+  // Only re-syncs when server table changes (load/save) or layer config changes.
+  // Field edits (label, text, status) do NOT trigger Pixi re-sync.
   $effect(() => {
     if (!pixiCtx) return;
-    const t = table;
+    const t = serverTable;
     const hidden = layerStore.hiddenGroups;
     const groupBy = layerStore.groupByColumn;
     const colors = layerStore.groupColors;
 
     if (t) pixiCtx.plugins.arrow.load(t);
-    pixiCtx.plugins.arrow.setLayerConfig({ hiddenGroups: hidden, groupByColumn: groupBy, groupColors: colors });
+    pixiCtx.plugins.arrow.setLayerConfig({
+      hiddenGroups: hidden,
+      groupByColumn: groupBy,
+      groupColors: colors,
+    });
     pixiCtx.plugins.arrow.sync();
   });
 
@@ -110,6 +119,10 @@
     pixiCtx?.plugins.interaction.setTool(tool);
   }
 
+  function handleResetView() {
+    pixiCtx?.plugins.image.resetView();
+  }
+
   function handleUndo() {
     annotationStore.undo(pageId);
     selectedIndex = null;
@@ -148,10 +161,15 @@
 
   function handleUpdateField(index: number, field: string, value: string) {
     annotationStore.updateLocal(pageId, index, { [field]: value });
+    // Patch Pixi's cached strings if this field affects rendering (color/grouping)
+    pixiCtx?.plugins.arrow.setFieldOverride(index, field, value);
+    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleUpdateStatus(index: number, status: AnnotationStatus) {
     annotationStore.updateLocal(pageId, index, { status });
+    pixiCtx?.plugins.arrow.setFieldOverride(index, "status", status);
+    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleBulkUpdateField(
@@ -195,6 +213,7 @@
       activeTool = "select";
       pixiCtx?.plugins.interaction.setTool("select");
     }
+    if (e.key === "0") handleToolChange("pan");
     if (e.key === "1") handleToolChange("select");
     if (e.key === "6") handleToolChange("lasso");
     if (mode === "edit") {
@@ -256,6 +275,7 @@
     onUndo={handleUndo}
     onRedo={handleRedo}
     onSave={handleSave}
+    onResetView={handleResetView}
   />
 
   <!-- Center: canvas + floating controls -->

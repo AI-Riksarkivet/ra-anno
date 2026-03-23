@@ -3,6 +3,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import type { Tool } from "$lib/pixi/types.js";
   import MousePointer2 from "@lucide/svelte/icons/mouse-pointer-2";
+  import Hand from "@lucide/svelte/icons/hand";
   import Square from "@lucide/svelte/icons/square";
   import Pentagon from "@lucide/svelte/icons/pentagon";
   import Scissors from "@lucide/svelte/icons/scissors";
@@ -11,6 +12,7 @@
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import SaveIcon from "@lucide/svelte/icons/save";
+  import Maximize from "@lucide/svelte/icons/maximize";
   import Eye from "@lucide/svelte/icons/eye";
   import Pencil from "@lucide/svelte/icons/pencil";
 
@@ -26,6 +28,7 @@
     onUndo,
     onRedo,
     onSave,
+    onResetView,
   }: {
     activeTool?: Tool;
     canUndo?: boolean;
@@ -38,6 +41,7 @@
     onUndo?: () => void;
     onRedo?: () => void;
     onSave?: () => void;
+    onResetView?: () => void;
   } = $props();
 </script>
 
@@ -70,6 +74,15 @@
       onclick={() => onToolChange?.("select")}
     >
       <MousePointer2 class="h-4 w-4" />
+    </Button>
+    <Button
+      variant={activeTool === "pan" ? "default" : "ghost"}
+      size="sm"
+      class="h-8 w-8 p-0"
+      title="Pan (0)"
+      onclick={() => onToolChange?.("pan")}
+    >
+      <Hand class="h-4 w-4" />
     </Button>
     <Button
       variant={activeTool === "lasso" ? "default" : "ghost"}
@@ -123,43 +136,58 @@
 
   <Separator class="my-2 w-6" />
 
-  <!-- Undo / Redo -->
-  <div class="flex flex-col gap-0.5">
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 w-8 p-0"
-      title="Undo (Ctrl+Z)"
-      disabled={!canUndo || mode === "view"}
-      onclick={() => onUndo?.()}
-    >
-      <Undo2 class="h-4 w-4" />
-    </Button>
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 w-8 p-0"
-      title="Redo (Ctrl+Shift+Z)"
-      disabled={!canRedo || mode === "view"}
-      onclick={() => onRedo?.()}
-    >
-      <Redo2 class="h-4 w-4" />
-    </Button>
-  </div>
-
-  <Separator class="my-2 w-6" />
-
-  <!-- Save -->
+  <!-- Reset view -->
   <Button
-    variant={isDirty && mode === "edit" ? "default" : "ghost"}
+    variant="ghost"
     size="sm"
     class="h-8 w-8 p-0"
-    title="Save (Ctrl+S)"
-    disabled={!isDirty || mode === "view"}
-    onclick={() => onSave?.()}
+    title="Reset View"
+    onclick={() => onResetView?.()}
   >
-    <SaveIcon class="h-4 w-4" />
+    <Maximize class="h-4 w-4" />
   </Button>
+
+  {#if mode === "edit"}
+    <Separator class="my-2 w-6" />
+
+    <!-- Undo / Redo -->
+    <div class="flex flex-col gap-0.5">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="Undo (Ctrl+Z)"
+        disabled={!canUndo}
+        onclick={() => onUndo?.()}
+      >
+        <Undo2 class="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="Redo (Ctrl+Shift+Z)"
+        disabled={!canRedo}
+        onclick={() => onRedo?.()}
+      >
+        <Redo2 class="h-4 w-4" />
+      </Button>
+    </div>
+
+    <Separator class="my-2 w-6" />
+
+    <!-- Save -->
+    <Button
+      variant={isDirty ? "default" : "ghost"}
+      size="sm"
+      class="h-8 w-8 p-0"
+      title="Save (Ctrl+S)"
+      disabled={!isDirty}
+      onclick={() => onSave?.()}
+    >
+      <SaveIcon class="h-4 w-4" />
+    </Button>
+  {/if}
 
   <!-- Bottom spacer + status -->
   <div class="mt-auto flex flex-col items-center gap-1">

@@ -31,6 +31,7 @@
     table = null,
     selectedIndex = null,
     selectedSet = new Set<number>() as ReadonlySet<number>,
+    mode = "edit",
     onSelect,
     onUpdateStatus,
     onUpdateField,
@@ -41,6 +42,7 @@
     table?: Table | null;
     selectedIndex?: number | null;
     selectedSet?: ReadonlySet<number>;
+    mode?: "view" | "edit";
     onSelect?: (index: number | null) => void;
     onUpdateStatus?: (index: number, status: AnnotationStatus) => void;
     onUpdateField?: (index: number, field: string, value: string) => void;
@@ -253,42 +255,44 @@
         </button>
       </div>
     </div>
-    <div class="flex-1 space-y-3 overflow-y-auto p-3">
-      <div>
-        <span class="text-xs text-muted-foreground">Set label for all</span>
-        <Select
-          type="single"
-          onValueChange={(v) => { if (v !== undefined) onBulkUpdateField?.(selectedSet, "label", v); }}
-        >
-          <SelectTrigger size="sm" class="mt-1 w-full">Choose label...</SelectTrigger>
-          <SelectContent>
-            {#each uniqueLabels as label (label)}
-              <SelectItem value={label}>{label}</SelectItem>
-            {/each}
-          </SelectContent>
-        </Select>
+    {#if mode === "edit"}
+      <div class="flex-1 space-y-3 overflow-y-auto p-3">
+        <div>
+          <span class="text-xs text-muted-foreground">Set label for all</span>
+          <Select
+            type="single"
+            onValueChange={(v) => { if (v !== undefined) onBulkUpdateField?.(selectedSet, "label", v); }}
+          >
+            <SelectTrigger size="sm" class="mt-1 w-full">Choose label...</SelectTrigger>
+            <SelectContent>
+              {#each uniqueLabels as label (label)}
+                <SelectItem value={label}>{label}</SelectItem>
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <span class="text-xs text-muted-foreground">Set group for all</span>
+          <Select
+            type="single"
+            onValueChange={(v) => { if (v !== undefined) onBulkUpdateField?.(selectedSet, "group", v); }}
+          >
+            <SelectTrigger size="sm" class="mt-1 w-full">Choose group...</SelectTrigger>
+            <SelectContent>
+              {#each uniqueGroups as group (group)}
+                <SelectItem value={group}>{group}</SelectItem>
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
+        <Separator />
+        <div class="flex flex-col gap-1.5">
+          <Button variant="outline" size="sm" class="justify-start text-green-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "accepted")}>Accept all</Button>
+          <Button variant="outline" size="sm" class="justify-start text-red-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "rejected")}>Reject all</Button>
+          <Button variant="outline" size="sm" class="justify-start" onclick={() => onBulkUpdateStatus?.(selectedSet, "draft")}>Reset all to draft</Button>
+        </div>
       </div>
-      <div>
-        <span class="text-xs text-muted-foreground">Set group for all</span>
-        <Select
-          type="single"
-          onValueChange={(v) => { if (v !== undefined) onBulkUpdateField?.(selectedSet, "group", v); }}
-        >
-          <SelectTrigger size="sm" class="mt-1 w-full">Choose group...</SelectTrigger>
-          <SelectContent>
-            {#each uniqueGroups as group (group)}
-              <SelectItem value={group}>{group}</SelectItem>
-            {/each}
-          </SelectContent>
-        </Select>
-      </div>
-      <Separator />
-      <div class="flex flex-col gap-1.5">
-        <Button variant="outline" size="sm" class="justify-start text-green-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "accepted")}>Accept all</Button>
-        <Button variant="outline" size="sm" class="justify-start text-red-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "rejected")}>Reject all</Button>
-        <Button variant="outline" size="sm" class="justify-start" onclick={() => onBulkUpdateStatus?.(selectedSet, "draft")}>Reset all to draft</Button>
-      </div>
-    </div>
+    {/if}
   {:else if selected && selectedIndex !== null}
     <div class="border-b p-3">
       <div class="flex items-center justify-between">
