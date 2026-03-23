@@ -243,6 +243,11 @@ export class ImagePlugin {
     this.app.render();
   }
 
+  /** Zoom percentage relative to fit-to-viewport (fit = 100%) */
+  get zoomPercent(): number {
+    return this.fitScale > 0 ? this.zoom / this.fitScale : 1;
+  }
+
   /** Programmatic reset — callable from UI regardless of tool */
   resetView(): void {
     this.fitToViewport();

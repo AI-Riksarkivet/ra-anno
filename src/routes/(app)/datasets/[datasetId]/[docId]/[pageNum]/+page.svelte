@@ -397,7 +397,7 @@
     <!-- Floating zoom + pagination controls (bottom-right) -->
     <div class="absolute bottom-2 right-2 z-10">
       <ZoomControls
-        {zoom}
+        zoom={pixiCtx?.plugins.image.zoomPercent ?? 1}
         currentPage={data.pageNum}
         totalPages={data.totalPages}
         onZoomIn={handleZoomIn}

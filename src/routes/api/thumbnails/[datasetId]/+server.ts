@@ -53,7 +53,7 @@ const MOCK_PAGES = Array.from({ length: 120 }, (_, i) => {
     page_num: (i % PAGES_PER_DOC) + 1,
     width: 800,
     height: 1100,
-    annotation_count: Math.floor(Math.random() * 80) + 5,
+    annotation_count: 20 + ((i * 7 + 13) % 61), // deterministic, matches generate-mock-data.ts
     status: statuses[i % statuses.length],
     label: labels[i % labels.length],
     doc_type: docTypes[docIndex % docTypes.length],
