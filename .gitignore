@@ -9,3 +9,4 @@ storybook-static/
 .claude/skills/building-pixijs/references/api-reference.md
 llms-full.txt
 anno/
+.deno-deploy/

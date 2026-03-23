@@ -15,10 +15,14 @@ import {
   MIDPOINT_STROKE,
   STROKE_COLOR,
   VERTEX_SIZE_PX,
+  CURSOR_VERTEX,
+  CURSOR_MIDPOINT,
 } from "../interaction/types.js";
 
 const MIDPOINT_SIZE_PX = 2;
 const MIN_VERTICES = 3;
+const HOVER_VERTEX_SCALE = 1.6;
+const HOVER_COLOR = 0x2563eb; // blue-600
 
 export class PolygonEditor implements Editor {
   private ctx: InteractionContext;
@@ -27,6 +31,9 @@ export class PolygonEditor implements Editor {
   private _dragging = false;
   private index = -1;
   private points: number[] = [];
+
+  // Hover state — which handle is under the cursor
+  private _hoveredVertex = -1; // vertex index, or -1 for none
 
   // Drag state — typed, not stringly
   private dragTarget: HandleId | null = null;
@@ -56,12 +63,14 @@ export class PolygonEditor implements Editor {
       ? Array.from(polygon)
       : [x, y, x + w, y, x + w, y + h, x, y + h];
     this._attached = true;
+    this._hoveredVertex = -1;
     this.renderHandles();
   }
 
   detach(): void {
     this._attached = false;
     this._dragging = false;
+    this._hoveredVertex = -1;
     this.dragTarget = null;
     this.handles.clear();
   }
@@ -74,6 +83,7 @@ export class PolygonEditor implements Editor {
     if (!this._attached) return null;
 
     const threshold = HIT_THRESHOLD_PX / this.ctx.getViewportScale();
+    const prevHover = this._hoveredVertex;
 
     // Test vertices first
     const n = this.points.length / 2;
@@ -81,7 +91,11 @@ export class PolygonEditor implements Editor {
       if (
         distance(x, y, this.points[i * 2], this.points[i * 2 + 1]) < threshold
       ) {
-        this.ctx.setCursor("move");
+        this.ctx.setCursor(CURSOR_VERTEX);
+        if (prevHover !== i) {
+          this._hoveredVertex = i;
+          this.renderHandles();
+        }
         return { type: "vertex", index: i };
       }
     }
@@ -92,7 +106,11 @@ export class PolygonEditor implements Editor {
       const mx = (this.points[i * 2] + this.points[j * 2]) / 2;
       const my = (this.points[i * 2 + 1] + this.points[j * 2 + 1]) / 2;
       if (distance(x, y, mx, my) < threshold) {
-        this.ctx.setCursor("copy");
+        this.ctx.setCursor(CURSOR_MIDPOINT);
+        if (prevHover !== -1) {
+          this._hoveredVertex = -1;
+          this.renderHandles();
+        }
         return { type: "midpoint", fromIndex: i, toIndex: j };
       }
     }
@@ -100,13 +118,23 @@ export class PolygonEditor implements Editor {
     // Test body
     if (pointInPolygon(x, y, this.points)) {
       this.ctx.setCursor("move");
+      if (prevHover !== -1) {
+        this._hoveredVertex = -1;
+        this.renderHandles();
+      }
       return { type: "body" };
     }
 
+    // Nothing hit — clear hover
+    if (prevHover !== -1) {
+      this._hoveredVertex = -1;
+      this.renderHandles();
+    }
     return null;
   }
 
   startDrag(handle: HandleId, x: number, y: number): void {
+    this.ctx.setCursor(handle.type === "body" ? "move" : CURSOR_VERTEX);
     this.dragStartX = x;
     this.dragStartY = y;
     this.origPoints = [...this.points];
@@ -146,13 +174,12 @@ export class PolygonEditor implements Editor {
     }
 
     this.renderHandles();
-    // Visual update only — Arrow table updated on endDrag via getGeometry()
   }
 
   endDrag(): void {
     this._dragging = false;
     this.dragTarget = null;
-    this.ctx.setCursor("grab");
+    this.ctx.setCursor("default");
   }
 
   isDragging(): boolean {
@@ -203,10 +230,13 @@ export class PolygonEditor implements Editor {
       this.handles.stroke({ color: MIDPOINT_STROKE, width: strokeW });
     }
 
-    // Vertex handles
+    // Vertex handles — hovered vertex is larger and colored
     for (let i = 0; i < n; i++) {
-      this.handles.circle(this.points[i * 2], this.points[i * 2 + 1], vr);
-      this.handles.fill({ color: HANDLE_FILL });
+      const isHovered = this._hoveredVertex === i;
+      const r = isHovered ? vr * HOVER_VERTEX_SCALE : vr;
+      const fill = isHovered ? HOVER_COLOR : HANDLE_FILL;
+      this.handles.circle(this.points[i * 2], this.points[i * 2 + 1], r);
+      this.handles.fill({ color: fill });
       this.handles.stroke({ color: STROKE_COLOR, width: strokeW });
     }
 

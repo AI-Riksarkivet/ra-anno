@@ -17,6 +17,9 @@ import {
   STROKE_COLOR,
 } from "../interaction/types.js";
 
+const HOVER_HANDLE_SCALE = 1.4;
+const HOVER_COLOR = 0x2563eb; // blue-600
+
 export class RectEditor implements Editor {
   private ctx: InteractionContext;
   private handles: Graphics;
@@ -28,6 +31,9 @@ export class RectEditor implements Editor {
   private cy = 0;
   private cw = 0;
   private ch = 0;
+
+  // Hover state
+  private _hoveredHandle: HandlePosition | null = null;
 
   private dragHandle: HandlePosition = "body";
   private dragStartX = 0;
@@ -60,12 +66,14 @@ export class RectEditor implements Editor {
     this.cw = w;
     this.ch = h;
     this._attached = true;
+    this._hoveredHandle = null;
     this.renderHandles();
   }
 
   detach(): void {
     this._attached = false;
     this._dragging = false;
+    this._hoveredHandle = null;
     this.handles.clear();
   }
 
@@ -79,9 +87,14 @@ export class RectEditor implements Editor {
     const threshold = HIT_THRESHOLD_PX / this.ctx.getViewportScale();
     const hList = rectHandles(this.cx, this.cy, this.cw, this.ch);
     const hit = hitTestHandles(x, y, hList, threshold);
+    const prevHover = this._hoveredHandle;
 
     if (hit) {
       this.ctx.setCursor(handleCursor(hit));
+      if (prevHover !== hit) {
+        this._hoveredHandle = hit;
+        this.renderHandles();
+      }
       return { type: "rect", position: hit };
     }
 
@@ -90,9 +103,18 @@ export class RectEditor implements Editor {
       y >= this.cy && y <= this.cy + this.ch
     ) {
       this.ctx.setCursor("move");
+      if (prevHover !== null) {
+        this._hoveredHandle = null;
+        this.renderHandles();
+      }
       return { type: "body" };
     }
 
+    // Nothing hit — clear hover
+    if (prevHover !== null) {
+      this._hoveredHandle = null;
+      this.renderHandles();
+    }
     return null;
   }
 
@@ -131,12 +153,11 @@ export class RectEditor implements Editor {
     this.ch = r.h;
 
     this.renderHandles();
-    // Visual update only — Arrow table updated on endDrag via getGeometry()
   }
 
   endDrag(): void {
     this._dragging = false;
-    this.ctx.setCursor("grab");
+    this.ctx.setCursor("default");
   }
 
   isDragging(): boolean {
@@ -171,13 +192,18 @@ export class RectEditor implements Editor {
     const s = HANDLE_SIZE_PX / scale;
     const strokeW = 1.5 / scale;
 
+    // Rectangle outline
     this.handles.rect(this.cx, this.cy, this.cw, this.ch);
     this.handles.stroke({ color: STROKE_COLOR, width: 2 / scale });
 
+    // Handle squares — hovered handle is larger and colored
     const hList = rectHandles(this.cx, this.cy, this.cw, this.ch);
     for (const h of hList) {
-      this.handles.rect(h.x - s / 2, h.y - s / 2, s, s);
-      this.handles.fill({ color: HANDLE_FILL });
+      const isHovered = this._hoveredHandle === h.pos;
+      const hs = isHovered ? s * HOVER_HANDLE_SCALE : s;
+      const fill = isHovered ? HOVER_COLOR : HANDLE_FILL;
+      this.handles.rect(h.x - hs / 2, h.y - hs / 2, hs, hs);
+      this.handles.fill({ color: fill });
       this.handles.stroke({ color: STROKE_COLOR, width: strokeW });
     }
 

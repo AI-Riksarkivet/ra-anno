@@ -1,6 +1,7 @@
 import { Application, Container, Graphics } from "pixi.js";
 import type { Table } from "apache-arrow";
 import type { ViewportBounds } from "./types.js";
+import { isAxisAlignedRect, pointInPolygon } from "./interaction/geometry.js";
 
 /** Default color function — consumers can override */
 const DEFAULT_COLOR = 0x8b5cf6; // purple
@@ -114,6 +115,17 @@ export class ArrowDataPlugin {
     this.dirtyOverrides.clear();
   }
 
+  /** Adjust override indices after a row is deleted (shifts higher indices down) */
+  adjustOverridesForDelete(deletedIndex: number): void {
+    const updated = new Map<number, { x: number; y: number; w: number; h: number; polygon: number[] }>();
+    for (const [idx, geo] of this.dirtyOverrides) {
+      if (idx < deletedIndex) updated.set(idx, geo);
+      else if (idx > deletedIndex) updated.set(idx - 1, geo);
+      // idx === deletedIndex: dropped (row deleted)
+    }
+    this.dirtyOverrides = updated;
+  }
+
   /** Check if there are unsaved geometry edits */
   hasDirtyOverrides(): boolean {
     return this.dirtyOverrides.size > 0;
@@ -152,10 +164,11 @@ export class ArrowDataPlugin {
     for (let i = 0; i < numRows; i++) {
       // Viewport culling: skip annotations entirely outside visible area
       if (vp) {
-        const ax = this.xArr[i];
-        const ay = this.yArr[i];
-        const aw = this.wArr[i];
-        const ah = this.hArr[i];
+        const ovr = this.dirtyOverrides.get(i);
+        const ax = ovr ? ovr.x : this.xArr[i];
+        const ay = ovr ? ovr.y : this.yArr[i];
+        const aw = ovr ? ovr.w : this.wArr[i];
+        const ah = ovr ? ovr.h : this.hArr[i];
         if (
           ax + aw < vp.x ||
           ax > vp.x + vp.width ||
@@ -281,17 +294,40 @@ export class ArrowDataPlugin {
   getAnnotationAtPoint(x: number, y: number): number | null {
     if (!this.table) return null;
 
+    // Iterate backwards (last drawn = on top) — same as original proven approach
+    // Check dirty overrides so moved annotations are still hittable
+    let bestIdx: number | null = null;
+    let bestArea = Infinity;
+
     for (let i = this.table.numRows - 1; i >= 0; i--) {
+      const override = this.dirtyOverrides.get(i);
+      const ax = override ? override.x : this.xArr[i];
+      const ay = override ? override.y : this.yArr[i];
+      const aw = override ? override.w : this.wArr[i];
+      const ah = override ? override.h : this.hArr[i];
+
       if (
-        x >= this.xArr[i] &&
-        x <= this.xArr[i] + this.wArr[i] &&
-        y >= this.yArr[i] &&
-        y <= this.yArr[i] + this.hArr[i]
+        x >= ax &&
+        x <= ax + aw &&
+        y >= ay &&
+        y <= ay + ah
       ) {
-        return i;
+        // For non-rect polygons, do precise point-in-polygon test
+        const poly = override?.polygon ?? this.getPolygonSlice(i);
+        if (poly && poly.length >= 6 && !isAxisAlignedRect(poly)) {
+          if (!pointInPolygon(x, y, poly)) continue;
+        }
+
+        // Smallest area wins (most specific annotation when overlapping)
+        const area = aw * ah;
+        if (area < bestArea) {
+          bestArea = area;
+          bestIdx = i;
+        }
       }
     }
-    return null;
+
+    return bestIdx;
   }
 
   destroy(): void {

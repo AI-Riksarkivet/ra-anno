@@ -147,6 +147,49 @@ class AnnotationStore {
     return updated;
   }
 
+  /** Apply multiple row updates in a single table rebuild + single undo entry */
+  batchUpdateLocal(
+    pageId: string,
+    updatesMap: Map<number, Record<string, unknown>>,
+  ): Table | null {
+    const existing = this._tables[pageId];
+    if (!existing || updatesMap.size === 0) return existing ?? null;
+
+    undoStack.push(existing);
+
+    const cols: Record<string, unknown[]> = {};
+    for (const field of existing.schema.fields) {
+      const col = existing.getChild(field.name)!;
+      const n = existing.numRows;
+      const isListCol = field.name === "polygon";
+
+      const arr: unknown[] = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const rowUpdates = updatesMap.get(i);
+        if (rowUpdates && field.name in rowUpdates) {
+          arr[i] = rowUpdates[field.name];
+        } else if (isListCol) {
+          const val = col.get(i);
+          if (val && val.length > 0) {
+            const plain = new Array(val.length);
+            for (let j = 0; j < val.length; j++) plain[j] = val.get(j);
+            arr[i] = plain;
+          } else {
+            arr[i] = null;
+          }
+        } else {
+          arr[i] = col.get(i);
+        }
+      }
+      cols[field.name] = arr;
+    }
+
+    const updated = tableFromArrays(cols);
+    this._tables = { ...this._tables, [pageId]: updated };
+    this._dirty = { ...this._dirty, [pageId]: true };
+    return updated;
+  }
+
   deleteLocal(pageId: string, rowIndex: number): Table | null {
     const existing = this._tables[pageId];
     if (!existing || rowIndex < 0 || rowIndex >= existing.numRows) return null;

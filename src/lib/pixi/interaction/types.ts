@@ -12,6 +12,45 @@ export const HANDLE_FILL = 0xffffff;
 export const MIDPOINT_FILL = 0xd4d4d8;
 export const MIDPOINT_STROKE = 0xa1a1aa;
 
+// --- Custom cursors (SVG data URIs) ---
+
+/** Small circle with dot — for vertex grab */
+function svgCursor(svg: string, size: number): string {
+  const half = size / 2;
+  const encoded = encodeURIComponent(svg);
+  return `url("data:image/svg+xml,${encoded}") ${half} ${half}, auto`;
+}
+
+/** Blue circle — vertex handle hover */
+export const CURSOR_VERTEX = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">` +
+    `<circle cx="10" cy="10" r="7" fill="none" stroke="#3b82f6" stroke-width="2"/>` +
+    `<circle cx="10" cy="10" r="2" fill="#3b82f6"/>` +
+  `</svg>`,
+  20,
+);
+
+/** Blue circle with + — midpoint (add vertex) */
+export const CURSOR_MIDPOINT = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">` +
+    `<circle cx="10" cy="10" r="7" fill="none" stroke="#3b82f6" stroke-width="1.5"/>` +
+    `<line x1="10" y1="5" x2="10" y2="15" stroke="#3b82f6" stroke-width="2"/>` +
+    `<line x1="5" y1="10" x2="15" y2="10" stroke="#3b82f6" stroke-width="2"/>` +
+  `</svg>`,
+  20,
+);
+
+/** Thin crosshair — for drawing tools */
+export const CURSOR_DRAW = svgCursor(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">` +
+    `<line x1="12" y1="0" x2="12" y2="10" stroke="#333" stroke-width="1"/>` +
+    `<line x1="12" y1="14" x2="12" y2="24" stroke="#333" stroke-width="1"/>` +
+    `<line x1="0" y1="12" x2="10" y2="12" stroke="#333" stroke-width="1"/>` +
+    `<line x1="14" y1="12" x2="24" y2="12" stroke="#333" stroke-width="1"/>` +
+  `</svg>`,
+  24,
+);
+
 // --- Handle identifier (typed, not stringly) ---
 
 export type HandleId =

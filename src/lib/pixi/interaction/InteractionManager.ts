@@ -8,13 +8,14 @@ import { PolygonTool } from "../tools/PolygonTool.js";
 import { RectTool } from "../tools/RectTool.js";
 import { ScissorsTool } from "../tools/ScissorsTool.js";
 import { isAxisAlignedRect } from "./geometry.js";
-import type {
-  CommitShape,
-  Editor,
-  GeometryUpdate,
-  InteractionContext,
-  Modifiers,
-  Tool,
+import {
+  CURSOR_DRAW,
+  type CommitShape,
+  type Editor,
+  type GeometryUpdate,
+  type InteractionContext,
+  type Modifiers,
+  type Tool,
 } from "./types.js";
 
 export class InteractionManager {
@@ -33,8 +34,8 @@ export class InteractionManager {
   private modifiers: Modifiers = { shift: false, ctrl: false, alt: false };
   private _editMode = false;
 
-  private canvasRect: DOMRect | null = null;
-  private resizeObserver: ResizeObserver | null = null;
+  // Pointer capture ID — tracked so we can release on pointerup/pointerleave
+  private capturedPointerId: number | null = null;
 
   onCommit?: (shape: CommitShape) => void;
   onSelect?: (index: number | null) => void;
@@ -87,7 +88,7 @@ export class InteractionManager {
     this.activeTool = tool === "select" ? null : (this.tools.get(tool) ?? null);
 
     // Set cursor for the active tool
-    this.canvas.style.cursor = this.activeTool ? "crosshair" : "default";
+    this.canvas.style.cursor = this.activeTool ? CURSOR_DRAW : "default";
   }
 
   /** Set edit mode — when false, no editing, no handles, view only */
@@ -193,7 +194,6 @@ export class InteractionManager {
 
   destroy(): void {
     this.removeEvents();
-    this.resizeObserver?.disconnect();
     for (const tool of this.tools.values()) tool.destroy();
     this.rectEditor.destroy();
     this.polygonEditor.destroy();
@@ -239,36 +239,36 @@ export class InteractionManager {
     return this.app.canvas as HTMLCanvasElement;
   }
 
-  private updateCanvasRect(): void {
-    this.canvasRect = this.canvas.getBoundingClientRect();
-  }
-
+  /**
+   * Convert pointer event to world coordinates.
+   * Always recompute getBoundingClientRect() — it's ~0.01ms and avoids
+   * stale-rect bugs when toolbar/sidebar shifts the canvas position
+   * without triggering a resize.
+   */
   private worldCoords(e: PointerEvent | MouseEvent): {
     x: number;
     y: number;
   } {
-    if (!this.canvasRect) this.updateCanvasRect();
-    const rect = this.canvasRect!;
+    const rect = this.canvas.getBoundingClientRect();
     return this.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
   }
 
   private setupEvents(): void {
     // Capture phase — fires BEFORE ImagePlugin's bubble-phase handlers
-    // so we can stopImmediatePropagation to block panning during edits/draws
+    // Must use stopImmediatePropagation (not stopPropagation) to block
+    // bubble-phase listeners on the SAME element.
     this.canvas.addEventListener("pointerdown", this.onPointerDown, true);
     this.canvas.addEventListener("pointermove", this.onPointerMove, true);
     this.canvas.addEventListener("pointerup", this.onPointerUp, true);
+    this.canvas.addEventListener("pointerleave", this.onPointerLeave, true);
     this.canvas.addEventListener("dblclick", this.onDoubleClick, true);
-
-    this.updateCanvasRect();
-    this.resizeObserver = new ResizeObserver(() => this.updateCanvasRect());
-    this.resizeObserver.observe(this.canvas);
   }
 
   private removeEvents(): void {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown, true);
     this.canvas.removeEventListener("pointermove", this.onPointerMove, true);
     this.canvas.removeEventListener("pointerup", this.onPointerUp, true);
+    this.canvas.removeEventListener("pointerleave", this.onPointerLeave, true);
     this.canvas.removeEventListener("dblclick", this.onDoubleClick, true);
   }
 
@@ -276,11 +276,14 @@ export class InteractionManager {
     if (e.button !== 0) return;
     const { x, y } = this.worldCoords(e);
 
-    // 1. Editor handle drag
+    // 1. Editor handle drag — with pointer capture for reliable drag
     if (this.activeEditor?.isAttached()) {
       const handle = this.activeEditor.hitTestHandle(x, y);
       if (handle) {
         e.stopImmediatePropagation();
+        this.arrowPlugin.highlight(null); // clear stale highlight during drag
+        this.canvas.setPointerCapture(e.pointerId);
+        this.capturedPointerId = e.pointerId;
         this.activeEditor.startDrag(handle, x, y);
         return;
       }
@@ -326,13 +329,13 @@ export class InteractionManager {
     const { x, y } = this.worldCoords(e);
 
     if (editorDragging) {
-      e.stopPropagation(); // block ImagePlugin pan
+      e.stopImmediatePropagation(); // block ImagePlugin pan on same element
       this.activeEditor!.drag(x, y);
       return;
     }
 
     if (hasActiveTool) {
-      e.stopPropagation(); // block ImagePlugin pan
+      e.stopImmediatePropagation(); // block ImagePlugin pan on same element
       this.activeTool!.onPointerMove(x, y);
       return;
     }
@@ -348,8 +351,14 @@ export class InteractionManager {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    // Release pointer capture if we own it
+    if (this.capturedPointerId !== null) {
+      try { this.canvas.releasePointerCapture(this.capturedPointerId); } catch {}
+      this.capturedPointerId = null;
+    }
+
     if (this.activeEditor?.isDragging()) {
-      e.stopPropagation();
+      e.stopImmediatePropagation(); // block ImagePlugin from resetting cursor
       const { x, y } = this.worldCoords(e);
       this.activeEditor.drag(x, y);
       this.activeEditor.endDrag();
@@ -368,6 +377,8 @@ export class InteractionManager {
           });
           // Re-sync the batch renderer to show the updated geometry
           this.arrowPlugin.sync();
+          // Restore highlight with updated geometry (sync clears it)
+          this.arrowPlugin.highlight(this.selectedIndex);
           this.onDirtyChange?.(true);
         }
       }
@@ -375,9 +386,19 @@ export class InteractionManager {
     }
 
     if (this.activeTool) {
-      e.stopPropagation();
+      e.stopImmediatePropagation();
       const { x, y } = this.worldCoords(e);
       this.activeTool.onPointerUp(x, y);
+    }
+  };
+
+  /** End drag if pointer leaves canvas (safety net for non-captured events) */
+  private onPointerLeave = (_e: PointerEvent): void => {
+    // If we have pointer capture, events keep flowing — no action needed.
+    // Only handle the case where drag is active WITHOUT capture (shouldn't happen, but safety).
+    if (this.capturedPointerId !== null) return;
+    if (this.activeEditor?.isDragging()) {
+      this.activeEditor.endDrag();
     }
   };
 

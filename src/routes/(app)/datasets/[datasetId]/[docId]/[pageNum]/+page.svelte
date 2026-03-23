@@ -112,16 +112,21 @@
 
   async function handleSave() {
     // Apply dirty geometry overrides to Arrow table before saving
+    // Uses batchUpdateLocal: single table rebuild + single undo entry
     if (pixiCtx) {
       const overrides = pixiCtx.plugins.arrow.getDirtyOverrides();
-      for (const [index, geo] of overrides) {
-        annotationStore.updateLocal(pageId, index, {
-          x: geo.x,
-          y: geo.y,
-          width: geo.w,
-          height: geo.h,
-          polygon: geo.polygon,
-        });
+      if (overrides.size > 0) {
+        const updatesMap = new Map<number, Record<string, unknown>>();
+        for (const [index, geo] of overrides) {
+          updatesMap.set(index, {
+            x: geo.x,
+            y: geo.y,
+            width: geo.w,
+            height: geo.h,
+            polygon: geo.polygon,
+          });
+        }
+        annotationStore.batchUpdateLocal(pageId, updatesMap);
       }
       pixiCtx.plugins.arrow.clearOverrides();
       hasGeometryEdits = false;
@@ -138,6 +143,8 @@
   }
 
   function handleDelete(index: number) {
+    // Adjust dirty overrides before delete — indices above shift down
+    pixiCtx?.plugins.arrow.adjustOverridesForDelete(index);
     annotationStore.deleteLocal(pageId, index);
     selectedIndex = null;
     pixiCtx?.plugins.interaction.cancel();
@@ -175,7 +182,8 @@
       handleSave();
     }
     if (e.key === "Delete" || e.key === "Backspace") {
-      if (selectedIndex !== null) {
+      // Only delete annotation in select mode — drawing tools handle Backspace themselves
+      if (selectedIndex !== null && activeTool === "select") {
         handleDelete(selectedIndex);
       }
     }
