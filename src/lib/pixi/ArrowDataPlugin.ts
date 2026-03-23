@@ -23,6 +23,44 @@ export interface LayerConfig {
   groupColors: Map<string, number>;
 }
 
+/** Heatmap configuration */
+export interface HeatmapConfig {
+  column: string | null; // null = disabled
+}
+
+/** Interpolate between two hex colors. t=0→a, t=1→b */
+function lerpColor(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bv = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bv;
+}
+
+/** 3-stop gradient: red → yellow → green */
+function heatColor(t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  if (clamped < 0.5) {
+    return lerpColor(0xef4444, 0xeab308, clamped * 2); // red → yellow
+  }
+  return lerpColor(0xeab308, 0x22c55e, (clamped - 0.5) * 2); // yellow → green
+}
+
+/** Categorical palette (10 distinct colors) */
+const CATEGORY_PALETTE = [
+  0x3b82f6,
+  0xef4444,
+  0x22c55e,
+  0xeab308,
+  0xa855f7,
+  0xf97316,
+  0x06b6d4,
+  0xec4899,
+  0x6366f1,
+  0x14b8a6,
+];
+
 const DEFAULT_STYLE: AnnotationStyle = {
   fillAlpha: 0.08,
   strokeWidth: 1.5,
@@ -82,6 +120,10 @@ export class ArrowDataPlugin {
 
   // Viewport culling
   private viewportBounds: ViewportBounds | null = null;
+
+  // ── Heatmap ──
+  private heatmapColumn: string | null = null;
+  private heatmapColors: number[] = []; // pre-computed per-row color
 
   constructor(
     app: Application,
@@ -177,6 +219,33 @@ export class ArrowDataPlugin {
       this.groupByStr[index] = value;
       this.dirty = true;
     }
+  }
+
+  /** Set heatmap column — null to disable */
+  setHeatmap(column: string | null): void {
+    this.heatmapColumn = column;
+    this.heatmapColors = [];
+    this.dirty = true;
+  }
+
+  /** Get column info for heatmap UI (name + whether numeric) */
+  getColumnInfo(): { name: string; numeric: boolean }[] {
+    if (!this.table) return [];
+    const numericTypes = new Set([
+      "Float32",
+      "Float64",
+      "Int32",
+      "Int16",
+      "Int8",
+      "Uint32",
+      "Uint16",
+      "Uint8",
+    ]);
+    return this.table.schema.fields.map((f) => ({
+      name: f.name,
+      numeric: numericTypes.has(f.type.toString()) ||
+        f.type.typeId === 3 /* Float */ || f.type.typeId === 2, /* Int */
+    }));
   }
 
   /** Update all layer filtering state — triggers full rebuild on next sync */
@@ -279,7 +348,60 @@ export class ArrowDataPlugin {
       }
     }
 
+    // ── Phase 3.5: Compute heatmap colors ──
+    if (this.heatmapColumn && this.heatmapColors.length !== numRows) {
+      const col = table.getChild(this.heatmapColumn);
+      this.heatmapColors = new Array(numRows);
+      if (col) {
+        // Detect if numeric by checking first non-null value
+        let isNumeric = false;
+        for (let i = 0; i < numRows; i++) {
+          const v = col.get(i);
+          if (v != null) {
+            isNumeric = typeof v === "number";
+            break;
+          }
+        }
+
+        if (isNumeric) {
+          // Numeric: find min/max, map to gradient
+          let min = Infinity, max = -Infinity;
+          for (let i = 0; i < numRows; i++) {
+            const v = col.get(i) as number;
+            if (v != null) {
+              if (v < min) min = v;
+              if (v > max) max = v;
+            }
+          }
+          const range = max - min || 1;
+          for (let i = 0; i < numRows; i++) {
+            const v = col.get(i) as number;
+            this.heatmapColors[i] = v != null
+              ? heatColor((v - min) / range)
+              : DEFAULT_COLOR;
+          }
+        } else {
+          // Categorical: assign palette colors
+          const categories = new Map<string, number>();
+          for (let i = 0; i < numRows; i++) {
+            const v = String(col.get(i) ?? "");
+            if (!categories.has(v)) {
+              categories.set(
+                v,
+                CATEGORY_PALETTE[categories.size % CATEGORY_PALETTE.length],
+              );
+            }
+            this.heatmapColors[i] = categories.get(v)!;
+          }
+        }
+      } else {
+        this.heatmapColors.fill(DEFAULT_COLOR);
+      }
+    }
+
     // ── Phase 4: Build per-group, per-color row indices ──
+    const useHeatmap = this.heatmapColumn !== null &&
+      this.heatmapColors.length === numRows;
     const vp = this.viewportBounds;
     const grouped = new Map<string, Map<number, number[]>>();
 
@@ -303,8 +425,9 @@ export class ArrowDataPlugin {
 
       // All lookups are pre-cached string[] — zero allocation in this loop
       const groupVal = this.groupByStr[i];
-      const groupColor = this.groupColors.get(groupVal);
-      const color = groupColor ?? this.colorFn(this.statusStr[i]);
+      const color = useHeatmap
+        ? this.heatmapColors[i]
+        : (this.groupColors.get(groupVal) ?? this.colorFn(this.statusStr[i]));
 
       let colorMap = grouped.get(groupVal);
       if (!colorMap) {

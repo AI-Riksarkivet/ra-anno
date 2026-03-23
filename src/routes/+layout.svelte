@@ -7,9 +7,26 @@
   import Database from "@lucide/svelte/icons/database";
   import Menu from "@lucide/svelte/icons/menu";
   import Keyboard from "@lucide/svelte/icons/keyboard";
+  import Sun from "@lucide/svelte/icons/sun";
+  import Moon from "@lucide/svelte/icons/moon";
+  import { browser } from "$app/environment";
 
   let { children }: { children: Snippet } = $props();
   let menuOpen = $state(false);
+
+  // Theme: read from localStorage or OS preference, apply .dark class to <html>
+  let dark = $state(false);
+  if (browser) {
+    const stored = localStorage.getItem("theme");
+    dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.classList.toggle("dark", dark);
+  }
+
+  function toggleTheme() {
+    dark = !dark;
+    document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
+  }
 
   // Smart breadcrumbs — only link to routes that exist
   const breadcrumbs = $derived.by(() => {
@@ -123,6 +140,19 @@
       onclick={() => window.dispatchEvent(new CustomEvent("toggle-shortcuts"))}
     >
       <Keyboard class="h-4 w-4" />
+    </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      class="h-7 w-7 p-0"
+      title={dark ? "Switch to light mode" : "Switch to dark mode"}
+      onclick={toggleTheme}
+    >
+      {#if dark}
+        <Sun class="h-4 w-4" />
+      {:else}
+        <Moon class="h-4 w-4" />
+      {/if}
     </Button>
   </div>
 </header>

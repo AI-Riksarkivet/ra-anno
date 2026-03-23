@@ -32,7 +32,8 @@ const COLUMNS = [
   },
 ] as const;
 
-// Mock page data
+// Mock page data — 24 pages per document, 5 documents = 120 pages
+const PAGES_PER_DOC = 24;
 const MOCK_PAGES = Array.from({ length: 120 }, (_, i) => {
   const statuses = ["accepted", "reviewed", "draft", "prediction", "rejected"];
   const labels = [
@@ -45,16 +46,17 @@ const MOCK_PAGES = Array.from({ length: 120 }, (_, i) => {
   ];
   const docTypes = ["handwritten", "printed", "map", "form"];
 
+  const docIndex = Math.floor(i / PAGES_PER_DOC);
   return {
     page_id: `mock-page-${String(i + 1).padStart(3, "0")}`,
-    doc_id: `doc-${Math.floor(i / 4) + 1}`,
-    page_num: (i % 4) + 1,
+    doc_id: `doc-${docIndex + 1}`,
+    page_num: (i % PAGES_PER_DOC) + 1,
     width: 800,
     height: 1100,
     annotation_count: Math.floor(Math.random() * 80) + 5,
     status: statuses[i % statuses.length],
     label: labels[i % labels.length],
-    doc_type: docTypes[Math.floor(i / 10) % docTypes.length],
+    doc_type: docTypes[docIndex % docTypes.length],
   };
 });
 

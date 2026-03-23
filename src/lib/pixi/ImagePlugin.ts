@@ -1,4 +1,4 @@
-import { Application, ColorMatrixFilter, Sprite, Texture } from "pixi.js";
+import { Application, ColorMatrixFilter, Graphics, Sprite, Texture } from "pixi.js";
 import type { ViewportBounds } from "./types.js";
 
 export class ImagePlugin {
@@ -13,6 +13,8 @@ export class ImagePlugin {
   panY = 0;
   imageWidth = 0;
   imageHeight = 0;
+  /** The zoom level at which the image fits the viewport (baseline = 100%) */
+  private fitScale = 1;
 
   onViewportChange?: (bounds: ViewportBounds) => void;
   canPan?: () => boolean;
@@ -62,7 +64,12 @@ export class ImagePlugin {
       this.sprite.destroy();
     }
 
-    const blob = new Blob([bytes as unknown as BlobPart], { type: mimeType });
+    // Ensure we have a proper ArrayBuffer-backed view for the Blob constructor
+    const buffer = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    );
+    const blob = new Blob([buffer as ArrayBuffer], { type: mimeType });
     const url = URL.createObjectURL(blob);
 
     try {
@@ -93,6 +100,7 @@ export class ImagePlugin {
     const vh = this.app.screen.height;
     const scale = Math.min(vw / this.imageWidth, vh / this.imageHeight);
 
+    this.fitScale = scale;
     this.zoom = scale;
     this.panX = (vw - this.imageWidth * scale) / 2;
     this.panY = (vh - this.imageHeight * scale) / 2;
@@ -209,12 +217,15 @@ export class ImagePlugin {
   };
 
   private onDoubleClick = (): void => {
-    if (this.canPan && !this.canPan()) return;
-    this.fitToViewport();
+    // Double-click intentionally does nothing — use the zoom controls to reset view
   };
 
   /** Apply image adjustments via ColorMatrixFilter */
-  setImageAdjustments(brightness: number, contrast: number, saturation: number): void {
+  setImageAdjustments(
+    brightness: number,
+    contrast: number,
+    saturation: number,
+  ): void {
     if (!this.sprite) return;
 
     // All at defaults (1.0) — remove filter for zero overhead

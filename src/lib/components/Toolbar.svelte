@@ -12,6 +12,8 @@
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import SaveIcon from "@lucide/svelte/icons/save";
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
+  import LayoutGrid from "@lucide/svelte/icons/layout-grid";
   import Eye from "@lucide/svelte/icons/eye";
   import Pencil from "@lucide/svelte/icons/pencil";
 
@@ -27,6 +29,10 @@
     onUndo,
     onRedo,
     onSave,
+    displayOpen = false,
+    onToggleDisplay,
+    galleryOpen = false,
+    onToggleGallery,
   }: {
     activeTool?: Tool;
     canUndo?: boolean;
@@ -39,6 +45,10 @@
     onUndo?: () => void;
     onRedo?: () => void;
     onSave?: () => void;
+    displayOpen?: boolean;
+    onToggleDisplay?: () => void;
+    galleryOpen?: boolean;
+    onToggleGallery?: () => void;
   } = $props();
 </script>
 
@@ -61,7 +71,7 @@
 
   <Separator class="mb-2 w-6" />
 
-  <!-- Tools -->
+  <!-- Group: Navigation tools (select, pan, lasso) -->
   <div class="flex flex-col gap-0.5">
     <Button
       variant={activeTool === "select" ? "default" : "ghost"}
@@ -90,8 +100,13 @@
     >
       <LassoIcon class="h-4 w-4" />
     </Button>
+  </div>
 
-    {#if mode === "edit"}
+  {#if mode === "edit"}
+    <Separator class="my-2 w-6" />
+
+    <!-- Group: Drawing tools (rect, polygon, scissors, magnetic) -->
+    <div class="flex flex-col gap-0.5">
       <Button
         variant={activeTool === "rect" ? "default" : "ghost"}
         size="sm"
@@ -128,13 +143,11 @@
       >
         <Magnet class="h-4 w-4" />
       </Button>
-    {/if}
-  </div>
+    </div>
 
-  {#if mode === "edit"}
     <Separator class="my-2 w-6" />
 
-    <!-- Undo / Redo -->
+    <!-- Group: Edit actions (undo, redo, save) -->
     <div class="flex flex-col gap-0.5">
       <Button
         variant="ghost"
@@ -156,21 +169,43 @@
       >
         <Redo2 class="h-4 w-4" />
       </Button>
+      <Button
+        variant={isDirty ? "default" : "ghost"}
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="Save (Ctrl+S)"
+        disabled={!isDirty}
+        onclick={() => onSave?.()}
+      >
+        <SaveIcon class="h-4 w-4" />
+      </Button>
     </div>
+  {/if}
 
+  {#if mode === "view"}
     <Separator class="my-2 w-6" />
 
-    <!-- Save -->
-    <Button
-      variant={isDirty ? "default" : "ghost"}
-      size="sm"
-      class="h-8 w-8 p-0"
-      title="Save (Ctrl+S)"
-      disabled={!isDirty}
-      onclick={() => onSave?.()}
-    >
-      <SaveIcon class="h-4 w-4" />
-    </Button>
+    <!-- Group: View tools — view mode only -->
+    <div class="flex flex-col gap-0.5">
+      <Button
+        variant={displayOpen ? "default" : "ghost"}
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="Display & heatmap"
+        onclick={() => onToggleDisplay?.()}
+      >
+        <SlidersHorizontal class="h-4 w-4" />
+      </Button>
+      <Button
+        variant={galleryOpen ? "default" : "ghost"}
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="Page gallery"
+        onclick={() => onToggleGallery?.()}
+      >
+        <LayoutGrid class="h-4 w-4" />
+      </Button>
+    </div>
   {/if}
 
   <!-- Bottom spacer + status -->

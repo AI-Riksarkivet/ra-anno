@@ -213,8 +213,31 @@ class AnnotationStore {
 
     const res = await fetch(`/api/annotations/${pageId}`);
     if (!res.ok) {
+      // No annotations yet for this page — initialize with empty table
       this._loading = { ...this._loading, [pageId]: false };
-      throw new Error(`Failed to load annotations: ${res.status}`);
+      const empty = tableFromArrays({
+        id: [] as string[],
+        page_id: [] as string[],
+        x: new Float32Array(0),
+        y: new Float32Array(0),
+        width: new Float32Array(0),
+        height: new Float32Array(0),
+        polygon: [] as (number[] | null)[],
+        text: [] as string[],
+        label: [] as string[],
+        confidence: new Float32Array(0),
+        source: [] as string[],
+        status: [] as string[],
+        reviewer: [] as string[],
+        group: [] as string[],
+        metadata: [] as string[],
+      });
+      this._serverTables = { ...this._serverTables, [pageId]: empty };
+      this._materializedTables = {
+        ...this._materializedTables,
+        [pageId]: empty,
+      };
+      return empty;
     }
 
     const etag = res.headers.get("ETag") ?? "";

@@ -40,10 +40,12 @@
       { keys: ["Ctrl", "Shift", "Z"], action: "Redo" },
       { keys: ["Ctrl", "S"], action: "Save" },
     ]},
+    { category: "Navigation", items: [
+      { keys: ["Alt", "\u2190"], action: "Previous page" },
+      { keys: ["Alt", "\u2192"], action: "Next page" },
+    ]},
     { category: "View", items: [
       { keys: ["Scroll"], action: "Zoom in/out" },
-      { keys: ["Drag"], action: "Pan canvas" },
-      { keys: ["Dbl-click"], action: "Fit to viewport" },
       { keys: ["?"], action: "Toggle this help" },
     ]},
   ];

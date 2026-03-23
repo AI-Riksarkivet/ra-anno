@@ -1,4 +1,12 @@
-import { Schema, Table, tableFromArrays, tableToIPC } from "apache-arrow";
+import {
+  Binary,
+  Field,
+  Schema,
+  Table,
+  tableFromArrays,
+  tableToIPC,
+  vectorFromArray,
+} from "apache-arrow";
 
 const NUM_ROWS = 50;
 const STATUSES = ["prediction", "draft", "reviewed", "accepted", "rejected"];
@@ -105,13 +113,7 @@ const table = tableFromArrays({
   metadata: metadatas,
 });
 
-// Embed page image in schema metadata as base64 (travels with Arrow IPC)
-const svgBytes = await Deno.readFile("static/mock/sample-page.svg");
-const imageB64 = btoa(
-  String.fromCharCode(...new Uint8Array(svgBytes)),
-);
-
-// Rebuild table with schema-level metadata (must be set before IPC serialization)
+// ── Annotation table (schema metadata for page-level info, no image) ──
 const pageMetadata = new Map([
   ["page_id", "mock-page-001"],
   ["document_id", "mock-doc"],
@@ -123,16 +125,53 @@ const pageMetadata = new Map([
   ["scan_date", "2024-03-15"],
   ["htr_model", "trocr-v2-riksarkivet"],
   ["htr_date", "2025-01-10"],
-  ["image_base64", imageB64],
-  ["image_mime", "image/svg+xml"],
 ]);
 const schemaWithMeta = new Schema(table.schema.fields, pageMetadata);
 const tableWithMeta = new Table(schemaWithMeta, table.batches);
 
 const ipc = tableToIPC(tableWithMeta, "stream");
 await Deno.writeFile("static/mock/mock-page-001.arrow", ipc);
+
+// ── Page table (Binary columns for image + thumbnail) ──
+const svgBytes = new Uint8Array(
+  await Deno.readFile("static/mock/sample-page.svg"),
+);
+
+// Build page table with Binary image column
+// Arrow JS vectorFromArray with explicit Binary type creates proper zero-copy binary data
+const imageVector = vectorFromArray([svgBytes], new Binary());
+const thumbVector = vectorFromArray([svgBytes], new Binary());
+
+const scalarTable = tableFromArrays({
+  page_id: ["mock-page-001"],
+  document_id: ["mock-doc"],
+  dataset_id: ["mock-dataset"],
+  page_number: new Int32Array([1]),
+  image_mime: ["image/svg+xml"],
+  image_width: new Int32Array([800]),
+  image_height: new Int32Array([1100]),
+});
+
+// Combine all columns into page table
+const pageTable = new Table({
+  page_id: scalarTable.getChild("page_id")!,
+  document_id: scalarTable.getChild("document_id")!,
+  dataset_id: scalarTable.getChild("dataset_id")!,
+  page_number: scalarTable.getChild("page_number")!,
+  image: imageVector,
+  thumbnail: thumbVector,
+  image_mime: scalarTable.getChild("image_mime")!,
+  image_width: scalarTable.getChild("image_width")!,
+  image_height: scalarTable.getChild("image_height")!,
+});
+const pageIpc = tableToIPC(pageTable, "stream");
+await Deno.writeFile("static/mock/mock-page-001.page.arrow", pageIpc);
+
 console.log(
   `Generated ${NUM_ROWS} annotations → static/mock/mock-page-001.arrow`,
+);
+console.log(
+  `Generated page table → static/mock/mock-page-001.page.arrow (${svgBytes.length} byte image)`,
 );
 console.log(`  Polygons: 30, Bboxes: 20`);
 console.log(

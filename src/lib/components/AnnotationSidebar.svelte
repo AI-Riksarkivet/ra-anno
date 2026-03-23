@@ -15,7 +15,6 @@
   import { getContext } from "svelte";
   import { type LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import LayerPanel from "./LayerPanel.svelte";
-  import DisplayPanel from "./DisplayPanel.svelte";
   import { isAxisAlignedRect } from "$lib/pixi/interaction/geometry.js";
 
   const layers = getContext<LayerStore>(LAYER_CTX);
@@ -39,8 +38,6 @@
     onBulkUpdateField,
     onBulkUpdateStatus,
     onDelete,
-    onImageChange,
-    onStyleChange,
   }: {
     table?: Table | null;
     selectedIndex?: number | null;
@@ -52,8 +49,6 @@
     onBulkUpdateField?: (indices: ReadonlySet<number>, field: string, value: string) => void;
     onBulkUpdateStatus?: (indices: ReadonlySet<number>, status: AnnotationStatus) => void;
     onDelete?: (index: number) => void;
-    onImageChange?: (brightness: number, contrast: number, saturation: number) => void;
-    onStyleChange?: (style: { fillAlpha: number; strokeWidth: number; strokeAlpha: number }) => void;
   } = $props();
 
   const isMultiSelect = $derived(selectedSet.size > 1);
@@ -216,9 +211,6 @@
   <!-- Layer panel -->
   <LayerPanel {table} />
 
-  <!-- Display settings (image + annotation rendering) -->
-  <DisplayPanel {onImageChange} {onStyleChange} />
-
   <!-- Status summary bar -->
   {#if table && table.numRows > 0}
     <div class="flex items-center gap-0.5 border-b px-3 py-1.5" title="Annotation status breakdown">
@@ -257,6 +249,7 @@
         <span class="text-sm font-medium">{selectedSet.size} selected</span>
         <button
           class="text-xs text-muted-foreground hover:text-foreground"
+          title="Deselect all annotations"
           onclick={() => onSelect?.(null)}
         >
           deselect
@@ -295,9 +288,9 @@
         </div>
         <Separator />
         <div class="flex flex-col gap-1.5">
-          <Button variant="outline" size="sm" class="justify-start text-green-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "accepted")}>Accept all</Button>
-          <Button variant="outline" size="sm" class="justify-start text-red-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "rejected")}>Reject all</Button>
-          <Button variant="outline" size="sm" class="justify-start" onclick={() => onBulkUpdateStatus?.(selectedSet, "draft")}>Reset all to draft</Button>
+          <Button variant="outline" size="sm" class="justify-start text-green-700" title="Accept all selected annotations" onclick={() => onBulkUpdateStatus?.(selectedSet, "accepted")}>Accept all</Button>
+          <Button variant="outline" size="sm" class="justify-start text-red-700" title="Reject all selected annotations" onclick={() => onBulkUpdateStatus?.(selectedSet, "rejected")}>Reject all</Button>
+          <Button variant="outline" size="sm" class="justify-start" title="Reset all selected to draft status" onclick={() => onBulkUpdateStatus?.(selectedSet, "draft")}>Reset all to draft</Button>
         </div>
       </div>
     {/if}
@@ -307,6 +300,7 @@
         <span class="text-sm font-medium">Annotation #{selectedIndex}</span>
         <button
           class="text-xs text-muted-foreground hover:text-foreground"
+          title="Close annotation detail"
           onclick={() => onSelect?.(null)}
         >
           close
@@ -449,6 +443,7 @@
             variant="outline"
             size="sm"
             class="justify-start text-green-700"
+            title="Mark annotation as accepted"
             onclick={() => onUpdateStatus?.(selectedIndex, "accepted")}
           >
             Accept
@@ -457,6 +452,7 @@
             variant="outline"
             size="sm"
             class="justify-start text-red-700"
+            title="Mark annotation as rejected"
             onclick={() => onUpdateStatus?.(selectedIndex, "rejected")}
           >
             Reject
@@ -465,6 +461,7 @@
             variant="outline"
             size="sm"
             class="justify-start"
+            title="Reset annotation to draft status"
             onclick={() => onUpdateStatus?.(selectedIndex, "draft")}
           >
             Reset to Draft
@@ -473,6 +470,7 @@
           <Button
             variant="destructive"
             size="sm"
+            title="Delete this annotation (Delete key)"
             onclick={() => onDelete?.(selectedIndex)}
           >
             Delete

@@ -1,16 +1,21 @@
 <script lang="ts">
   import PixiCanvas from "$lib/pixi/PixiCanvas.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
+  import DisplayPanel from "$lib/components/DisplayPanel.svelte";
   import ZoomControls from "$lib/components/ZoomControls.svelte";
+  import PageGallery from "$lib/components/PageGallery.svelte";
   import AnnotationSidebar from "$lib/components/AnnotationSidebar.svelte";
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
   import { statusColor } from "$lib/utils/color.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import { setContext } from "svelte";
+  import { goto } from "$app/navigation";
   import type { PixiContext } from "$lib/pixi/types.js";
   import type { Tool } from "$lib/pixi/types.js";
   import type { AnnotationStatus } from "$lib/types/schemas.js";
+
+  const { data } = $props();
 
   const layerStore = new LayerStore();
   setContext(LAYER_CTX, layerStore);
@@ -25,8 +30,10 @@
   let selectedSet = $state<ReadonlySet<number>>(new Set());
   let pixiCtx = $state<PixiContext | null>(null);
   let hasGeometryEdits = $state(false);
+  let displayOpen = $state(false);
+  let galleryOpen = $state(false);
 
-  const pageId = "mock-page-001";
+  const pageId = $derived(data.pageId);
 
   // Materialized table (base + overlays) — for sidebar UI
   const table = $derived(annotationStore.table(pageId));
@@ -58,18 +65,35 @@
     // Init mode — view by default, no editing until toggled
     ctx.plugins.interaction.setEditMode(mode === "edit");
 
-    // Load annotations — image is embedded in the Arrow schema metadata
-    await annotationStore.load(pageId);
+    // Load page image + annotations in PARALLEL (not sequential)
+    const loadImage = (async () => {
+      try {
+        const pageRes = await fetch(`/api/pages/${pageId}`);
+        if (!pageRes.ok) return;
+        const { tableFromIPC: parseIPC } = await import("apache-arrow");
+        const pageTable = parseIPC(
+          new Uint8Array(await pageRes.arrayBuffer()),
+        );
+        const imageCol = pageTable.getChild("image");
+        const mimeCol = pageTable.getChild("image_mime");
+        if (imageCol) {
+          const mime = String(mimeCol?.get(0) ?? "image/png");
+          const data = imageCol.data[0];
+          const offsets = data.valueOffsets;
+          const values = data.values;
+          if (offsets && values && offsets.length > 1) {
+            const imageBytes = values.subarray(offsets[0], offsets[1]);
+            await ctx.plugins.image.loadFromBytes(imageBytes, mime);
+          }
+        }
+      } catch (e) {
+        console.error("Page image load failed:", e);
+      }
+    })();
+    const loadAnnotations = annotationStore.load(pageId);
 
-    // Image comes from the Arrow table — no separate HTTP request
-    const loadedTable = annotationStore.serverTable(pageId);
-    const imageB64 = loadedTable?.schema.metadata.get("image_base64");
-    const imageMime =
-      loadedTable?.schema.metadata.get("image_mime") ?? "image/png";
-    if (imageB64) {
-      const bytes = Uint8Array.from(atob(imageB64), (c) => c.charCodeAt(0));
-      await ctx.plugins.image.loadFromBytes(bytes, imageMime);
-    }
+    // Wait for both to complete
+    await Promise.all([loadImage, loadAnnotations]);
 
     // Drawing tool commits → append to Arrow store, auto-select the new shape
     ctx.plugins.interaction.onCommit = (shape) => {
@@ -119,6 +143,10 @@
   function handleToggleMode() {
     mode = mode === "view" ? "edit" : "view";
     pixiCtx?.plugins.interaction.setEditMode(mode === "edit");
+    if (mode === "edit") {
+      displayOpen = false;
+      galleryOpen = false;
+    }
     if (mode === "view") {
       activeTool = "select";
       pixiCtx?.plugins.interaction.setTool("select");
@@ -128,6 +156,20 @@
   function handleToolChange(tool: Tool) {
     activeTool = tool;
     pixiCtx?.plugins.interaction.setTool(tool);
+  }
+
+  const currentPageIndex = $derived(data.pages.findIndex((p: { page_num: number }) => p.page_num === data.pageNum));
+
+  function handlePrevPage() {
+    if (currentPageIndex > 0) {
+      goto(`/datasets/${data.datasetId}/${data.docId}/${data.pages[currentPageIndex - 1].page_num}`);
+    }
+  }
+
+  function handleNextPage() {
+    if (currentPageIndex < data.pages.length - 1) {
+      goto(`/datasets/${data.datasetId}/${data.docId}/${data.pages[currentPageIndex + 1].page_num}`);
+    }
   }
 
   function handleZoomIn() {
@@ -150,6 +192,13 @@
     pixiCtx?.plugins.arrow.setStyle(style);
     pixiCtx?.plugins.arrow.sync();
   }
+
+  function handleHeatmapChange(column: string | null) {
+    pixiCtx?.plugins.arrow.setHeatmap(column);
+    pixiCtx?.plugins.arrow.sync();
+  }
+
+  const arrowColumns = $derived(pixiCtx?.plugins.arrow.getColumnInfo() ?? []);
 
   function handleUndo() {
     annotationStore.undo(pageId);
@@ -241,6 +290,15 @@
       activeTool = "select";
       pixiCtx?.plugins.interaction.setTool("select");
     }
+    // Page navigation: Alt+Arrow always, plain Arrow when no text input focused
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const inInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if (e.altKey || !inInput) {
+        e.preventDefault();
+        if (e.key === "ArrowLeft") handlePrevPage();
+        else handleNextPage();
+      }
+    }
     if (e.key === "0") handleToolChange("pan");
     if (e.key === "1") handleToolChange("select");
     if (e.key === "6") handleToolChange("lasso");
@@ -303,15 +361,51 @@
     onUndo={handleUndo}
     onRedo={handleRedo}
     onSave={handleSave}
+    {displayOpen}
+    onToggleDisplay={() => (displayOpen = !displayOpen)}
+    {galleryOpen}
+    onToggleGallery={() => (galleryOpen = !galleryOpen)}
   />
 
-  <!-- Center: canvas + floating controls -->
-  <div class="relative flex-1">
+  <!-- Center: canvas + all overlays -->
+  <div class="relative min-w-0 flex-1">
     <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
 
-    <!-- Floating zoom controls -->
+    <!-- Display drawer overlay (top-left, over canvas) -->
+    {#if displayOpen}
+      <div class="absolute left-0 top-0 z-20 h-full">
+        <DisplayPanel
+          open={displayOpen}
+          columns={arrowColumns}
+          onClose={() => (displayOpen = false)}
+          onImageChange={handleImageChange}
+          onStyleChange={handleStyleChange}
+          onHeatmapChange={handleHeatmapChange}
+        />
+      </div>
+    {/if}
+
+    <!-- Gallery drawer overlay (bottom, over canvas) -->
+    <PageGallery
+      open={galleryOpen}
+      pages={data.pages}
+      currentPageNum={data.pageNum}
+      datasetId={data.datasetId}
+      onNavigate={(pageNum) => goto(`/datasets/${data.datasetId}/${data.docId}/${pageNum}`)}
+    />
+
+    <!-- Floating zoom + pagination controls (bottom-right) -->
     <div class="absolute bottom-2 right-2 z-10">
-      <ZoomControls {zoom} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onResetView={handleResetView} />
+      <ZoomControls
+        {zoom}
+        currentPage={data.pageNum}
+        totalPages={data.totalPages}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onResetView={handleResetView}
+        onPrevPage={handlePrevPage}
+        onNextPage={handleNextPage}
+      />
     </div>
   </div>
 
@@ -331,8 +425,6 @@
     onBulkUpdateField={handleBulkUpdateField}
     onBulkUpdateStatus={handleBulkUpdateStatus}
     onDelete={handleDelete}
-    onImageChange={handleImageChange}
-    onStyleChange={handleStyleChange}
   />
 </div>
 
