@@ -61,6 +61,7 @@ export interface InteractionContext {
   getViewportScale: () => number;
   getModifiers: () => Modifiers;
   setCursor: (cursor: string) => void;
+  requestRender: () => void;
 }
 
 export interface Modifiers {

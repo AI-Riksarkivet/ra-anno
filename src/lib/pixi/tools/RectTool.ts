@@ -43,6 +43,7 @@ export class RectTool implements Tool {
     this.preview.rect(r.x, r.y, r.w, r.h);
     this.preview.fill({ color: STROKE_COLOR, alpha: 0.1 });
     this.preview.stroke({ color: STROKE_COLOR, width: 2 });
+    this.ctx.requestRender();
   }
 
   onPointerUp(x: number, y: number): void {

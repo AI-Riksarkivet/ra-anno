@@ -151,5 +151,7 @@ export class PolygonTool implements Tool {
       this.preview.fill({ color: STROKE_COLOR, alpha: 0.2 });
       this.preview.stroke({ color: STROKE_COLOR, width: 2 / scale });
     }
+
+    this.ctx.requestRender();
   }
 }

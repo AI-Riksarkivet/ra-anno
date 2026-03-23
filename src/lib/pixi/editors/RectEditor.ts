@@ -180,6 +180,8 @@ export class RectEditor implements Editor {
       this.handles.fill({ color: HANDLE_FILL });
       this.handles.stroke({ color: STROKE_COLOR, width: strokeW });
     }
+
+    this.ctx.requestRender();
   }
 
   destroy(): void {

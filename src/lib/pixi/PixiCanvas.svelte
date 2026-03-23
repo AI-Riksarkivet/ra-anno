@@ -64,6 +64,10 @@
       if (destroyed) return; // component unmounted during async init
       containerEl.appendChild(app.canvas);
 
+      // Stop continuous rendering — render on demand only
+      // This saves CPU/GPU when nothing is changing (document viewer, not a game)
+      app.ticker.stop();
+
       imagePlugin = new ImagePlugin(app);
       arrowPlugin = new ArrowDataPlugin(app, colorFn, annotationStyle);
       interaction = new InteractionManager(app, arrowPlugin);

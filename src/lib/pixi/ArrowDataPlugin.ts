@@ -214,6 +214,9 @@ export class ArrowDataPlugin {
     }
 
     this.highlightGraphics.clear();
+
+    // Render on demand
+    this.app.render();
   }
 
   /** Get geometry for a single annotation — checks dirty overlay first */
@@ -256,6 +259,7 @@ export class ArrowDataPlugin {
     }
     this.hoverGraphics.fill({ color: 0x3b82f6, alpha: 0.05 });
     this.hoverGraphics.stroke({ color: 0x3b82f6, width: 1, alpha: 0.6 });
+    this.app.render();
   }
 
   /** Selection highlight */
@@ -271,6 +275,7 @@ export class ArrowDataPlugin {
     }
     this.highlightGraphics.fill({ color: 0x3b82f6, alpha: 0.06 });
     this.highlightGraphics.stroke({ color: 0x3b82f6, width: 1.5 });
+    this.app.render();
   }
 
   getAnnotationAtPoint(x: number, y: number): number | null {

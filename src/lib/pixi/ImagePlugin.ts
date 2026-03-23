@@ -85,6 +85,8 @@ export class ImagePlugin {
     this.app.stage.scale.set(this.zoom);
     this.app.stage.position.set(this.panX, this.panY);
     this.onViewportChange?.(this.getViewportBounds());
+    // Render on demand — no continuous ticker
+    this.app.render();
   }
 
   private get canvas(): HTMLCanvasElement {

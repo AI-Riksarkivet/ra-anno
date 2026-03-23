@@ -217,6 +217,9 @@ export class InteractionManager {
       setCursor: (cursor: string) => {
         this.canvas.style.cursor = cursor;
       },
+      requestRender: () => {
+        this.app.render();
+      },
     };
   }
 
