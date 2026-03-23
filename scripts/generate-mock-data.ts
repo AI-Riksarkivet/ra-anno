@@ -20,16 +20,119 @@ const LABELS = [
 ];
 const GROUPS = ["line", "block", "marginalia", "header", "uncategorized"];
 
-// Read the SVG image once — shared by all pages
-const svgBytes = new Uint8Array(
-  await Deno.readFile("static/mock/sample-page.svg"),
-);
-
 // Ensure output directory exists
 try {
   await Deno.stat("static/mock");
 } catch {
   await Deno.mkdir("static/mock", { recursive: true });
+}
+
+// Seeded pseudo-random for deterministic but varied output
+function seededRandom(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+// Generate a unique SVG per page with "handwriting" scribbles and page-specific text
+function generatePageSvg(
+  pageId: string,
+  docId: string,
+  pageNum: number,
+  seed: number,
+): string {
+  const rng = seededRandom(seed);
+  const bgTint = Math.floor(rng() * 20) - 10; // slight color variation
+  const r = 245 + bgTint;
+  const g = 240 + bgTint;
+  const b = 232 + Math.floor(bgTint * 0.5);
+
+  // Generate wavy "handwriting" lines
+  const textLines: string[] = [];
+  const lineCount = 15 + Math.floor(rng() * 15);
+  for (let i = 0; i < lineCount; i++) {
+    const y = 130 + i * 28 + Math.floor(rng() * 8) - 4;
+    const startX = 90 + Math.floor(rng() * 30);
+    const endX = 680 - Math.floor(rng() * 100);
+    // Wavy path
+    let d = `M ${startX} ${y}`;
+    for (let x = startX; x < endX; x += 20) {
+      const dy = (rng() - 0.5) * 6;
+      d += ` Q ${x + 10} ${y + dy}, ${x + 20} ${y + (rng() - 0.5) * 3}`;
+    }
+    const opacity = 0.3 + rng() * 0.4;
+    const width = 0.5 + rng() * 1.5;
+    textLines.push(
+      `<path d="${d}" fill="none" stroke="#1a1a2e" stroke-width="${
+        width.toFixed(1)
+      }" opacity="${opacity.toFixed(2)}"/>`,
+    );
+  }
+
+  // Add some "word" blocks (short horizontal strokes grouped together)
+  const wordBlocks: string[] = [];
+  for (let i = 0; i < 8 + Math.floor(rng() * 12); i++) {
+    const x = 100 + Math.floor(rng() * 500);
+    const y = 120 + Math.floor(rng() * 850);
+    const wordLen = 30 + Math.floor(rng() * 80);
+    const thickness = 1 + rng() * 2;
+    wordBlocks.push(
+      `<rect x="${x}" y="${y}" width="${wordLen}" height="${
+        thickness.toFixed(1)
+      }" fill="#1a1a2e" opacity="${
+        (0.15 + rng() * 0.3).toFixed(2)
+      }" rx="0.5"/>`,
+    );
+  }
+
+  // Occasional margin notes
+  const marginNotes: string[] = [];
+  if (rng() > 0.4) {
+    const my = 200 + Math.floor(rng() * 600);
+    marginNotes.push(
+      `<text x="35" y="${my}" font-family="serif" font-size="10" fill="#8b7355" opacity="0.6" transform="rotate(-5, 35, ${my})">${
+        rng() > 0.5 ? "NB" : "obs!"
+      }</text>`,
+    );
+  }
+
+  // Occasional stamp or seal
+  const stamps: string[] = [];
+  if (rng() > 0.7) {
+    const sx = 500 + Math.floor(rng() * 150);
+    const sy = 900 + Math.floor(rng() * 100);
+    stamps.push(
+      `<circle cx="${sx}" cy="${sy}" r="25" fill="none" stroke="#8b2020" stroke-width="2" opacity="0.3"/>`,
+      `<text x="${sx}" y="${
+        sy + 4
+      }" text-anchor="middle" font-family="serif" font-size="8" fill="#8b2020" opacity="0.3">SIGILL</text>`,
+    );
+  }
+
+  // Page number at bottom
+  const pageNumPos = rng() > 0.5 ? "right" : "center";
+  const pnX = pageNumPos === "right" ? 700 : 400;
+  const pnAnchor = pageNumPos === "right" ? "end" : "middle";
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1100">
+  <rect width="100%" height="100%" fill="rgb(${r},${g},${b})"/>
+  <g fill="none" stroke="#2a2a2a" stroke-width="0.5" opacity="0.15">
+    ${
+    Array.from({ length: 38 }, (_, i) =>
+      `<line x1="80" y1="${120 + i * 24}" x2="720" y2="${120 + i * 24}"/>`)
+      .join("\n    ")
+  }
+  </g>
+  <rect x="60" y="60" width="680" height="980" fill="none" stroke="#8b7355" stroke-width="1.5" opacity="0.5"/>
+  <text x="400" y="95" text-anchor="middle" font-family="serif" font-size="20" fill="#2a2a2a" opacity="0.7">${docId.toUpperCase()} — Sida ${pageNum}</text>
+  ${textLines.join("\n  ")}
+  ${wordBlocks.join("\n  ")}
+  ${marginNotes.join("\n  ")}
+  ${stamps.join("\n  ")}
+  <text x="${pnX}" y="1060" text-anchor="${pnAnchor}" font-family="serif" font-size="12" fill="#666" opacity="0.5">${pageNum}</text>
+</svg>`;
 }
 
 let totalAnnotations = 0;
@@ -145,9 +248,13 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     tableToIPC(tableWithMeta, "stream"),
   );
 
+  // Generate unique SVG for this page
+  const pageSvg = generatePageSvg(pageId, docId, pageNum, p * 12345 + 67890);
+  const pageSvgBytes = new TextEncoder().encode(pageSvg);
+
   // Page table with Binary image column
-  const imageVector = vectorFromArray([svgBytes], new Binary());
-  const thumbVector = vectorFromArray([svgBytes], new Binary());
+  const imageVector = vectorFromArray([pageSvgBytes], new Binary());
+  const thumbVector = vectorFromArray([pageSvgBytes], new Binary());
   const scalarTable = tableFromArrays({
     page_id: [pageId],
     document_id: [docId],
