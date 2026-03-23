@@ -4,6 +4,12 @@
 
   let open = $state(false);
 
+  $effect(() => {
+    const handler = () => (open = !open);
+    window.addEventListener("toggle-shortcuts", handler);
+    return () => window.removeEventListener("toggle-shortcuts", handler);
+  });
+
   const shortcuts = [
     { category: "Tools", items: [
       { keys: ["1"], action: "Select tool" },
@@ -11,6 +17,7 @@
       { keys: ["3"], action: "Polygon tool" },
       { keys: ["4"], action: "Intelligent Scissors" },
       { keys: ["5"], action: "Magnetic Cursor" },
+      { keys: ["6"], action: "Lasso Select" },
     ]},
     { category: "Drawing", items: [
       { keys: ["Shift"], action: "Constrain to square (rect)" },
@@ -20,6 +27,7 @@
     ]},
     { category: "Selection", items: [
       { keys: ["Ctrl", "Click"], action: "Multi-select" },
+      { keys: ["Alt", "Click"], action: "Cycle overlapping annotations" },
       { keys: ["Tab"], action: "Next annotation" },
       { keys: ["Shift", "Tab"], action: "Previous annotation" },
       { keys: ["P"], action: "Convert rect to polygon" },

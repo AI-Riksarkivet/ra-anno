@@ -7,6 +7,7 @@ import { MagneticTool } from "../tools/MagneticTool.js";
 import { PolygonTool } from "../tools/PolygonTool.js";
 import { RectTool } from "../tools/RectTool.js";
 import { ScissorsTool } from "../tools/ScissorsTool.js";
+import { LassoTool } from "../tools/LassoTool.js";
 import { isAxisAlignedRect } from "./geometry.js";
 import {
   type CommitShape,
@@ -72,6 +73,21 @@ export class InteractionManager {
     const magneticTool = new MagneticTool(ctx);
     magneticTool.onCommit = (shape) => this.onCommit?.(shape);
     this.tools.set("magnetic", magneticTool);
+
+    const lassoTool = new LassoTool(ctx, arrowPlugin);
+    lassoTool.onLassoComplete = (indices) => {
+      this.selectedSet.clear();
+      for (const idx of indices) this.selectedSet.add(idx);
+      const primary = indices.length > 0 ? indices[indices.length - 1] : null;
+      this.selectedIndex = primary;
+      this.arrowPlugin.highlightSet(this.selectedSet);
+      this.onSelect?.(primary);
+      // Auto-switch back to select tool
+      this._toolName = "select";
+      this.activeTool = null;
+      this.canvas.style.cursor = "default";
+    };
+    this.tools.set("lasso", lassoTool);
 
     this.rectEditor = new RectEditor(ctx);
     // onChange fires every drag frame — DON'T update Arrow table here
@@ -151,7 +167,7 @@ export class InteractionManager {
       }
     }
 
-    this.arrowPlugin.highlight(index);
+    this.arrowPlugin.highlightSet(this.selectedSet);
     this.onSelect?.(index);
   }
 

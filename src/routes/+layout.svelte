@@ -120,6 +120,7 @@
       size="sm"
       class="h-7 w-7 p-0"
       title="Keyboard shortcuts (?)"
+      onclick={() => window.dispatchEvent(new CustomEvent("toggle-shortcuts"))}
     >
       <Keyboard class="h-4 w-4" />
     </Button>

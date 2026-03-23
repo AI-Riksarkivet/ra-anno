@@ -7,6 +7,7 @@
   import Pentagon from "@lucide/svelte/icons/pentagon";
   import Scissors from "@lucide/svelte/icons/scissors";
   import Magnet from "@lucide/svelte/icons/magnet";
+  import LassoIcon from "@lucide/svelte/icons/lasso";
   import Undo2 from "@lucide/svelte/icons/undo-2";
   import Redo2 from "@lucide/svelte/icons/redo-2";
   import SaveIcon from "@lucide/svelte/icons/save";
@@ -69,6 +70,15 @@
       onclick={() => onToolChange?.("select")}
     >
       <MousePointer2 class="h-4 w-4" />
+    </Button>
+    <Button
+      variant={activeTool === "lasso" ? "default" : "ghost"}
+      size="sm"
+      class="h-8 w-8 p-0"
+      title="Lasso Select (6)"
+      onclick={() => onToolChange?.("lasso")}
+    >
+      <LassoIcon class="h-4 w-4" />
     </Button>
 
     {#if mode === "edit"}

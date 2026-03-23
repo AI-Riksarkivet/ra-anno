@@ -22,22 +22,34 @@
   let collapsed = $state(false);
   let filterText = $state("");
   let collapsedGroups = $state(new Set<string>());
+  let creatingLabel = $state(false);
+  let creatingGroup = $state(false);
+  let newLabelText = $state("");
+  let newGroupText = $state("");
 
   let {
     table = null,
     selectedIndex = null,
+    selectedSet = new Set<number>() as ReadonlySet<number>,
     onSelect,
     onUpdateStatus,
     onUpdateField,
+    onBulkUpdateField,
+    onBulkUpdateStatus,
     onDelete,
   }: {
     table?: Table | null;
     selectedIndex?: number | null;
+    selectedSet?: ReadonlySet<number>;
     onSelect?: (index: number | null) => void;
     onUpdateStatus?: (index: number, status: AnnotationStatus) => void;
     onUpdateField?: (index: number, field: string, value: string) => void;
+    onBulkUpdateField?: (indices: ReadonlySet<number>, field: string, value: string) => void;
+    onBulkUpdateStatus?: (indices: ReadonlySet<number>, status: AnnotationStatus) => void;
     onDelete?: (index: number) => void;
   } = $props();
+
+  const isMultiSelect = $derived(selectedSet.size > 1);
 
   const statusClasses: Record<string, string> = {
     accepted: "bg-green-100 text-green-800",
@@ -228,7 +240,56 @@
     </details>
   {/if}
 
-  {#if selected && selectedIndex !== null}
+  {#if isMultiSelect}
+    <!-- Bulk actions panel -->
+    <div class="border-b p-3">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium">{selectedSet.size} selected</span>
+        <button
+          class="text-xs text-muted-foreground hover:text-foreground"
+          onclick={() => onSelect?.(null)}
+        >
+          deselect
+        </button>
+      </div>
+    </div>
+    <div class="flex-1 space-y-3 overflow-y-auto p-3">
+      <div>
+        <span class="text-xs text-muted-foreground">Set label for all</span>
+        <Select
+          type="single"
+          onValueChange={(v) => { if (v !== undefined) onBulkUpdateField?.(selectedSet, "label", v); }}
+        >
+          <SelectTrigger size="sm" class="mt-1 w-full">Choose label...</SelectTrigger>
+          <SelectContent>
+            {#each uniqueLabels as label (label)}
+              <SelectItem value={label}>{label}</SelectItem>
+            {/each}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <span class="text-xs text-muted-foreground">Set group for all</span>
+        <Select
+          type="single"
+          onValueChange={(v) => { if (v !== undefined) onBulkUpdateField?.(selectedSet, "group", v); }}
+        >
+          <SelectTrigger size="sm" class="mt-1 w-full">Choose group...</SelectTrigger>
+          <SelectContent>
+            {#each uniqueGroups as group (group)}
+              <SelectItem value={group}>{group}</SelectItem>
+            {/each}
+          </SelectContent>
+        </Select>
+      </div>
+      <Separator />
+      <div class="flex flex-col gap-1.5">
+        <Button variant="outline" size="sm" class="justify-start text-green-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "accepted")}>Accept all</Button>
+        <Button variant="outline" size="sm" class="justify-start text-red-700" onclick={() => onBulkUpdateStatus?.(selectedSet, "rejected")}>Reject all</Button>
+        <Button variant="outline" size="sm" class="justify-start" onclick={() => onBulkUpdateStatus?.(selectedSet, "draft")}>Reset all to draft</Button>
+      </div>
+    </div>
+  {:else if selected && selectedIndex !== null}
     <div class="border-b p-3">
       <div class="flex items-center justify-between">
         <span class="text-sm font-medium">Annotation #{selectedIndex}</span>
@@ -254,34 +315,76 @@
 
       <div>
         <span class="text-xs text-muted-foreground">Label</span>
-        <Select
-          type="single"
-          value={String(selected.label || "")}
-          onValueChange={(v) => { if (v !== undefined) onUpdateField?.(selectedIndex, "label", v); }}
-        >
-          <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.label || "Select label...")}</SelectTrigger>
-          <SelectContent>
-            {#each uniqueLabels as label (label)}
-              <SelectItem value={label}>{label}</SelectItem>
-            {/each}
-          </SelectContent>
-        </Select>
+        {#if creatingLabel}
+          <input
+            class="mt-1 h-8 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="New label name..."
+            bind:value={newLabelText}
+            onkeydown={(e) => {
+              if (e.key === "Enter" && newLabelText.trim()) {
+                onUpdateField?.(selectedIndex, "label", newLabelText.trim());
+                creatingLabel = false;
+                newLabelText = "";
+              }
+              if (e.key === "Escape") { creatingLabel = false; newLabelText = ""; }
+            }}
+            onblur={() => { creatingLabel = false; newLabelText = ""; }}
+          />
+        {:else}
+          <Select
+            type="single"
+            value={String(selected.label || "")}
+            onValueChange={(v) => {
+              if (v === "__new__") { creatingLabel = true; return; }
+              if (v !== undefined) onUpdateField?.(selectedIndex, "label", v);
+            }}
+          >
+            <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.label || "Select label...")}</SelectTrigger>
+            <SelectContent>
+              {#each uniqueLabels as label (label)}
+                <SelectItem value={label}>{label}</SelectItem>
+              {/each}
+              <SelectItem value="__new__">+ New label...</SelectItem>
+            </SelectContent>
+          </Select>
+        {/if}
       </div>
 
       <div>
         <span class="text-xs text-muted-foreground">Group</span>
-        <Select
-          type="single"
-          value={String(selected.group || "")}
-          onValueChange={(v) => { if (v !== undefined) onUpdateField?.(selectedIndex, "group", v); }}
-        >
-          <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.group || "Select group...")}</SelectTrigger>
-          <SelectContent>
-            {#each uniqueGroups as group (group)}
-              <SelectItem value={group}>{group}</SelectItem>
-            {/each}
-          </SelectContent>
-        </Select>
+        {#if creatingGroup}
+          <input
+            class="mt-1 h-8 w-full rounded-md border bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="New group name..."
+            bind:value={newGroupText}
+            onkeydown={(e) => {
+              if (e.key === "Enter" && newGroupText.trim()) {
+                onUpdateField?.(selectedIndex, "group", newGroupText.trim());
+                creatingGroup = false;
+                newGroupText = "";
+              }
+              if (e.key === "Escape") { creatingGroup = false; newGroupText = ""; }
+            }}
+            onblur={() => { creatingGroup = false; newGroupText = ""; }}
+          />
+        {:else}
+          <Select
+            type="single"
+            value={String(selected.group || "")}
+            onValueChange={(v) => {
+              if (v === "__new__") { creatingGroup = true; return; }
+              if (v !== undefined) onUpdateField?.(selectedIndex, "group", v);
+            }}
+          >
+            <SelectTrigger size="sm" class="mt-1 w-full">{String(selected.group || "Select group...")}</SelectTrigger>
+            <SelectContent>
+              {#each uniqueGroups as group (group)}
+                <SelectItem value={group}>{group}</SelectItem>
+              {/each}
+              <SelectItem value="__new__">+ New group...</SelectItem>
+            </SelectContent>
+          </Select>
+        {/if}
       </div>
 
       <div>

@@ -19,4 +19,10 @@ export interface ViewportBounds {
   height: number;
 }
 
-export type Tool = "select" | "rect" | "polygon" | "scissors" | "magnetic";
+export type Tool =
+  | "select"
+  | "rect"
+  | "polygon"
+  | "scissors"
+  | "magnetic"
+  | "lasso";

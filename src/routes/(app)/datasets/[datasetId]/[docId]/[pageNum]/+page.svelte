@@ -22,6 +22,7 @@
   let panY = $state(0);
   let activeTool = $state<Tool>("select");
   let selectedIndex = $state<number | null>(null);
+  let selectedSet = $state<ReadonlySet<number>>(new Set());
   let pixiCtx = $state<PixiContext | null>(null);
   let hasGeometryEdits = $state(false);
 
@@ -81,9 +82,10 @@
       }
     };
 
-    // Selection changes
+    // Selection changes (single or multi via Ctrl+Click / lasso)
     ctx.plugins.interaction.onSelect = (index) => {
       selectedIndex = index;
+      selectedSet = new Set(ctx.plugins.interaction.getSelectedSet());
     };
 
     // Dirty overlay changes
@@ -153,6 +155,25 @@
     annotationStore.updateLocal(pageId, index, { status });
   }
 
+  function handleBulkUpdateField(
+    indices: ReadonlySet<number>,
+    field: string,
+    value: string,
+  ) {
+    const updatesMap = new Map<number, Record<string, unknown>>();
+    for (const idx of indices) updatesMap.set(idx, { [field]: value });
+    annotationStore.batchUpdateLocal(pageId, updatesMap);
+  }
+
+  function handleBulkUpdateStatus(
+    indices: ReadonlySet<number>,
+    status: AnnotationStatus,
+  ) {
+    const updatesMap = new Map<number, Record<string, unknown>>();
+    for (const idx of indices) updatesMap.set(idx, { status });
+    annotationStore.batchUpdateLocal(pageId, updatesMap);
+  }
+
   function handleDelete(index: number) {
     // Adjust dirty overrides before delete — indices above shift down
     pixiCtx?.plugins.arrow.adjustOverridesForDelete(index);
@@ -180,6 +201,7 @@
     if (e.key === "3") handleToolChange("polygon");
     if (e.key === "4") handleToolChange("scissors");
     if (e.key === "5") handleToolChange("magnetic");
+    if (e.key === "6") handleToolChange("lasso");
     if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
       e.preventDefault();
       handleUndo();
@@ -220,8 +242,7 @@
 />
 
 <div class="flex h-full">
-  <!-- Left: vertical toolbar (edit mode only) -->
-  {#if mode === "edit"}
+  <!-- Left: vertical toolbar (always visible — select/lasso in view, all tools in edit) -->
   <Toolbar
     {mode}
     onToggleMode={handleToggleMode}
@@ -235,7 +256,6 @@
     onRedo={handleRedo}
     onSave={handleSave}
   />
-  {/if}
 
   <!-- Center: canvas + floating controls -->
   <div class="relative flex-1">
@@ -262,12 +282,16 @@
   <AnnotationSidebar
     {table}
     {selectedIndex}
+    {selectedSet}
     onSelect={(i) => {
       selectedIndex = i;
+      selectedSet = new Set();
       pixiCtx?.plugins.interaction.select(i);
     }}
     onUpdateField={handleUpdateField}
     onUpdateStatus={handleUpdateStatus}
+    onBulkUpdateField={handleBulkUpdateField}
+    onBulkUpdateStatus={handleBulkUpdateStatus}
     onDelete={handleDelete}
   />
 </div>

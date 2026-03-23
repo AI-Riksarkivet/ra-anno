@@ -1,9 +1,4 @@
-import {
-  Schema,
-  Table,
-  tableFromArrays,
-  tableToIPC,
-} from "apache-arrow";
+import { Schema, Table, tableFromArrays, tableToIPC } from "apache-arrow";
 
 const NUM_ROWS = 50;
 const STATUSES = ["prediction", "draft", "reviewed", "accepted", "rejected"];

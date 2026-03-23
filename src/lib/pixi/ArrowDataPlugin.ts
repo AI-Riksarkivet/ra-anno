@@ -409,6 +409,33 @@ export class ArrowDataPlugin {
     this.app.render();
   }
 
+  /** Number of rows in the current table */
+  getNumRows(): number {
+    return this.numRows;
+  }
+
+  /** Whether a row is hidden by the current layer filter */
+  isVisible(index: number): boolean {
+    return !this.hiddenMask[index];
+  }
+
+  /** Highlight multiple selected annotations */
+  highlightSet(indices: ReadonlySet<number>): void {
+    this.highlightGraphics.clear();
+    if (!this.table || indices.size === 0) return;
+    for (const index of indices) {
+      const geo = this.getGeometry(index);
+      if (geo.polygon && geo.polygon.length >= 6) {
+        this.highlightGraphics.poly(geo.polygon, true);
+      } else {
+        this.highlightGraphics.rect(geo.x, geo.y, geo.w, geo.h);
+      }
+    }
+    this.highlightGraphics.fill({ color: 0x3b82f6, alpha: 0.06 });
+    this.highlightGraphics.stroke({ color: 0x3b82f6, width: 1.5 });
+    this.app.render();
+  }
+
   /** Smallest visible annotation at point (used for hover + normal click) */
   getAnnotationAtPoint(x: number, y: number): number | null {
     const hits = this.getAllAnnotationsAtPoint(x, y);
