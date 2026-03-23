@@ -146,7 +146,7 @@ export class PolygonEditor implements Editor {
     }
 
     this.renderHandles();
-    this.emitChange();
+    // Visual update only — Arrow table updated on endDrag via getGeometry()
   }
 
   endDrag(): void {
@@ -159,11 +159,22 @@ export class PolygonEditor implements Editor {
     return this._dragging;
   }
 
+  getGeometry(): GeometryUpdate | null {
+    if (!this._attached) return null;
+    const bounds = boundsFromPolygon(this.points);
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      w: bounds.w,
+      h: bounds.h,
+      polygon: [...this.points],
+    };
+  }
+
   deleteVertex(vertexIdx: number): boolean {
     if (this.points.length / 2 <= MIN_VERTICES) return false;
     this.points.splice(vertexIdx * 2, 2);
     this.renderHandles();
-    this.emitChange();
     return true;
   }
 

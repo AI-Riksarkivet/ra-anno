@@ -131,14 +131,7 @@ export class RectEditor implements Editor {
     this.ch = r.h;
 
     this.renderHandles();
-    // Emit rect as 4-point polygon so Arrow table stays consistent
-    this.onChange?.(this.index, {
-      x: r.x,
-      y: r.y,
-      w: r.w,
-      h: r.h,
-      polygon: [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h],
-    });
+    // Visual update only — Arrow table updated on endDrag via getGeometry()
   }
 
   endDrag(): void {
@@ -148,6 +141,26 @@ export class RectEditor implements Editor {
 
   isDragging(): boolean {
     return this._dragging;
+  }
+
+  getGeometry(): GeometryUpdate | null {
+    if (!this._attached) return null;
+    return {
+      x: this.cx,
+      y: this.cy,
+      w: this.cw,
+      h: this.ch,
+      polygon: [
+        this.cx,
+        this.cy,
+        this.cx + this.cw,
+        this.cy,
+        this.cx + this.cw,
+        this.cy + this.ch,
+        this.cx,
+        this.cy + this.ch,
+      ],
+    };
   }
 
   renderHandles(): void {

@@ -104,6 +104,9 @@ export interface Editor {
   endDrag(): void;
   isDragging(): boolean;
 
+  /** Get the current edited geometry (call after endDrag to commit) */
+  getGeometry(): GeometryUpdate | null;
+
   renderHandles(): void;
   destroy(): void;
 

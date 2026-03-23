@@ -66,12 +66,12 @@ export class InteractionManager {
     this.tools.set("magnetic", magneticTool);
 
     this.rectEditor = new RectEditor(ctx);
-    this.rectEditor.onChange = (index, updates) =>
-      this.onChange?.(index, updates);
+    // onChange fires every drag frame — DON'T update Arrow table here
+    // The editor's renderHandles() provides visual feedback
+    this.rectEditor.onChange = () => {};
 
     this.polygonEditor = new PolygonEditor(ctx);
-    this.polygonEditor.onChange = (index, updates) =>
-      this.onChange?.(index, updates);
+    this.polygonEditor.onChange = () => {};
 
     this.setupEvents();
   }
@@ -349,7 +349,14 @@ export class InteractionManager {
       const { x, y } = this.worldCoords(e);
       this.activeEditor.drag(x, y);
       this.activeEditor.endDrag();
-      // Final onChange — emit without throttle
+
+      // NOW commit the final geometry to the Arrow table (one update, not per-frame)
+      if (this.selectedIndex !== null) {
+        const finalGeometry = this.activeEditor.getGeometry();
+        if (finalGeometry) {
+          this.onChange?.(this.selectedIndex, finalGeometry);
+        }
+      }
       return;
     }
 
