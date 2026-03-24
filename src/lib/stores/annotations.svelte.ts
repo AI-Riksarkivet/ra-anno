@@ -150,6 +150,10 @@ class AnnotationStore {
   // This is what the UI and Pixi read from
   private _materializedTables = $state.raw<Record<string, Table>>({});
 
+  // Structural version — only bumps on append/delete (row count changes)
+  // Pixi watches this to avoid re-sync on field-only edits
+  private _structuralVersion = $state<Record<string, number>>({});
+
   /** The current table (base + overlays materialized) for UI consumption */
   table(pageId: string): Table | null {
     return this._materializedTables[pageId] ?? null;
@@ -158,6 +162,11 @@ class AnnotationStore {
   /** The server's original table (for reading columns zero-copy) */
   serverTable(pageId: string): Table | null {
     return this._serverTables[pageId] ?? null;
+  }
+
+  /** Version counter that only increments on structural changes (append/delete/load/save) */
+  structuralVersion(pageId: string): number {
+    return this._structuralVersion[pageId] ?? 0;
   }
 
   isDirty(pageId: string): boolean {
@@ -189,6 +198,11 @@ class AnnotationStore {
     this._undoStack = { ...this._undoStack, [pageId]: stack };
     // Clear redo on new edit
     this._redoStack = { ...this._redoStack, [pageId]: [] };
+  }
+
+  private bumpStructural(pageId: string): void {
+    const v = this._structuralVersion[pageId] ?? 0;
+    this._structuralVersion = { ...this._structuralVersion, [pageId]: v + 1 };
   }
 
   private rematerialize(pageId: string): void {
@@ -339,6 +353,7 @@ class AnnotationStore {
     this.pushUndo(pageId);
     const appended = [...(this._appendedRows[pageId] ?? []), row];
     this._appendedRows = { ...this._appendedRows, [pageId]: appended };
+    this.bumpStructural(pageId);
     this.rematerialize(pageId);
     return this._materializedTables[pageId] ?? null;
   }
@@ -385,6 +400,7 @@ class AnnotationStore {
       }
     }
 
+    this.bumpStructural(pageId);
     this.rematerialize(pageId);
   }
 
@@ -426,6 +442,7 @@ class AnnotationStore {
     };
     this._deletedIds = { ...this._deletedIds, [pageId]: prev.deletedIds };
 
+    this.bumpStructural(pageId);
     this.rematerialize(pageId);
     return this._materializedTables[pageId] ?? null;
   }
@@ -458,6 +475,7 @@ class AnnotationStore {
     };
     this._deletedIds = { ...this._deletedIds, [pageId]: next.deletedIds };
 
+    this.bumpStructural(pageId);
     this.rematerialize(pageId);
     return this._materializedTables[pageId] ?? null;
   }
@@ -571,6 +589,7 @@ class AnnotationStore {
     this._undoStack = { ...this._undoStack, [pageId]: [] };
     this._redoStack = { ...this._redoStack, [pageId]: [] };
     this._dirty = { ...this._dirty, [pageId]: false };
+    this.bumpStructural(pageId);
   }
 }
 

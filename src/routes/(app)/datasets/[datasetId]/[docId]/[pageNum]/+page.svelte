@@ -6,11 +6,10 @@
   import PageGallery from "$lib/components/PageGallery.svelte";
   import AnnotationSidebar from "$lib/components/AnnotationSidebar.svelte";
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
-  import * as Resizable from "$lib/components/ui/resizable/index.js";
   import { statusColor } from "$lib/utils/color.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
-  import { setContext } from "svelte";
+  import { setContext, untrack } from "svelte";
   import { goto } from "$app/navigation";
   import type { PixiContext } from "$lib/pixi/types.js";
   import type { Tool } from "$lib/pixi/types.js";
@@ -34,11 +33,6 @@
   let displayOpen = $state(false);
   let galleryOpen = $state(false);
   let splitOpen = $state(false);
-  let splitCtx = $state<PixiContext | null>(null);
-  // Tracks which canvas (primary or compare) toolbar actions should target
-  let activeCtx = $state<PixiContext | null>(null);
-  /** The context that toolbar actions operate on — primary by default */
-  const toolbarCtx = $derived(splitOpen ? (activeCtx ?? pixiCtx) : pixiCtx);
 
   // Cached page image bytes — avoids re-fetch on split toggle
   let cachedImageBytes: Uint8Array | null = null;
@@ -46,17 +40,22 @@
 
   const pageId = $derived(data.pageId);
 
-  // Materialized table (base + overlays) — for both sidebar UI and Pixi rendering
+  // Materialized table (base + overlays) — for sidebar UI
   const table = $derived(annotationStore.table(pageId));
+  // Structural version — only changes on append/delete/load/save (not field edits)
+  const structVersion = $derived(annotationStore.structuralVersion(pageId));
 
-  // Pixi syncs when table changes (edits, appends, deletes) or layer config changes
+  // Pixi syncs ONLY on structural changes (append/delete/load/save) or layer config
+  // Field edits (label, text, status) are patched via setFieldOverride — no full re-sync
   $effect(() => {
     if (!pixiCtx) return;
-    const t = table;
+    const _sv = structVersion; // triggers on structural changes only
     const hidden = layerStore.hiddenGroups;
     const groupBy = layerStore.groupByColumn;
     const colors = layerStore.groupColors;
 
+    // Read the materialized table WITHOUT creating a dependency on it
+    const t = untrack(() => annotationStore.table(pageId));
     if (t) pixiCtx.plugins.arrow.load(t);
     pixiCtx.plugins.arrow.setLayerConfig({
       hiddenGroups: hidden,
@@ -153,26 +152,6 @@
     // Arrow table only rebuilt on Save
   }
 
-  /** Second canvas for split/compare view — uses cached data, no re-fetch */
-  async function handleSplitReady(ctx: PixiContext) {
-    splitCtx = ctx;
-    ctx.plugins.interaction.setEditMode(false); // compare view is read-only
-    ctx.plugins.interaction.setTool("select");
-
-    // Load image from cache (already fetched by primary)
-    try {
-      if (cachedImageBytes) {
-        await ctx.plugins.image.loadFromBytes(cachedImageBytes, cachedImageMime);
-      }
-    } catch { /* split image load failed — non-critical */ }
-
-    // Load annotations from materialized table (includes appended rows)
-    const t = annotationStore.table(pageId);
-    if (t) {
-      ctx.plugins.arrow.load(t);
-      ctx.plugins.arrow.sync();
-    }
-  }
 
   function handleToggleMode() {
     mode = mode === "view" ? "edit" : "view";
@@ -189,9 +168,7 @@
 
   function handleToolChange(tool: Tool) {
     activeTool = tool;
-    // Apply tool to both canvases so whichever you interact with uses the right tool
     pixiCtx?.plugins.interaction.setTool(tool);
-    splitCtx?.plugins.interaction.setTool(tool);
   }
 
   const currentPageIndex = $derived(data.pages.findIndex((p: { page_num: number }) => p.page_num === data.pageNum));
@@ -209,15 +186,15 @@
   }
 
   function handleZoomIn() {
-    toolbarCtx?.plugins.image.zoomIn();
+    pixiCtx?.plugins.image.zoomIn();
   }
 
   function handleZoomOut() {
-    toolbarCtx?.plugins.image.zoomOut();
+    pixiCtx?.plugins.image.zoomOut();
   }
 
   function handleResetView() {
-    toolbarCtx?.plugins.image.resetView();
+    pixiCtx?.plugins.image.resetView();
   }
 
   function handleImageChange(brightness: number, contrast: number, saturation: number) {
@@ -274,10 +251,15 @@
 
   function handleUpdateField(index: number, field: string, value: string) {
     annotationStore.updateLocal(pageId, index, { [field]: value });
+    // Patch Pixi's cached strings for rendering-relevant fields (no full re-sync)
+    pixiCtx?.plugins.arrow.setFieldOverride(index, field, value);
+    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleUpdateStatus(index: number, status: AnnotationStatus) {
     annotationStore.updateLocal(pageId, index, { status });
+    pixiCtx?.plugins.arrow.setFieldOverride(index, "status", status);
+    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleBulkUpdateField(
@@ -396,41 +378,13 @@
     onToggleDisplay={() => (displayOpen = !displayOpen)}
     {galleryOpen}
     onToggleGallery={() => (galleryOpen = !galleryOpen)}
-    onToggleSplit={() => (splitOpen = !splitOpen)}
-    {splitOpen}
+    splitOpen={false}
+    onToggleSplit={() => { /* TODO: native Pixi split view */ }}
   />
 
-  <!-- Center: canvas area -->
+  <!-- Center: canvas -->
   <div class="relative min-w-0 flex-1">
-    {#if splitOpen}
-      <!-- Split: two canvases side by side -->
-      <Resizable.PaneGroup direction="horizontal" class="h-full">
-        <Resizable.Pane defaultSize={50} minSize={20}>
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="relative h-full w-full"
-            onmouseenter={() => { activeCtx = pixiCtx; }}
-          >
-            <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
-            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">Primary</div>
-          </div>
-        </Resizable.Pane>
-        <Resizable.Handle withHandle />
-        <Resizable.Pane defaultSize={50} minSize={20}>
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="relative h-full w-full"
-            onmouseenter={() => { activeCtx = splitCtx; }}
-          >
-            <PixiCanvas colorFn={statusColor} onready={handleSplitReady} />
-            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">Compare</div>
-          </div>
-        </Resizable.Pane>
-      </Resizable.PaneGroup>
-    {:else}
-      <!-- Single canvas -->
-      <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
-    {/if}
+    <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
 
     <!-- Display drawer overlay (top-left, over canvas) -->
     {#if displayOpen}
