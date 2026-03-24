@@ -150,9 +150,50 @@ class AnnotationStore {
   private _loading = $state<Record<string, boolean>>({});
   private _materializedTables = $state.raw<Record<string, Table>>({});
   private _structuralVersion = $state<Record<string, number>>({});
+  // Bumps on every field edit — sidebar watches this for reactivity
+  private _fieldVersion = $state<Record<string, number>>({});
 
+  /** Materialized table — only accurate after structural changes.
+   *  For field-only reads, use getFieldValue() which checks overlays. */
   table(pageId: string): Table | null {
     return this._materializedTables[pageId] ?? null;
+  }
+
+  /** Field version — increments on every field edit. Watch this for sidebar reactivity. */
+  fieldVersion(pageId: string): number {
+    return this._fieldVersion[pageId] ?? 0;
+  }
+
+  /** Read a field value — checks overlay first, falls back to server table.
+   *  O(1) per call, no table rebuild needed. */
+  getFieldValue(pageId: string, rowIndex: number, field: string): unknown {
+    // Check field overlay
+    const override = this._fieldOverrides[pageId]?.get(rowIndex)?.get(field);
+    if (override !== undefined) return override;
+
+    // Check if this is an appended row
+    const base = this._serverTables[pageId];
+    if (!base) return null;
+    const deleted = this._deletedIndices[pageId] ?? new Set();
+    const appended = this._appendedRows[pageId] ?? [];
+
+    // Map materialized index to base/appended
+    // Materialized rows = base rows (minus deleted) + appended rows
+    let baseIdx = 0;
+    let matIdx = 0;
+    for (let i = 0; i < base.numRows; i++) {
+      if (deleted.has(i)) continue;
+      if (matIdx === rowIndex) {
+        return base.getChild(field)?.get(i);
+      }
+      matIdx++;
+    }
+    // Must be an appended row
+    const appendedIdx = rowIndex - matIdx;
+    if (appendedIdx >= 0 && appendedIdx < appended.length) {
+      return appended[appendedIdx][field] ?? null;
+    }
+    return null;
   }
 
   serverTable(pageId: string): Table | null {

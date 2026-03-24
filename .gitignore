@@ -11,3 +11,4 @@ llms-full.txt
 anno/
 .deno-deploy/
 arrow/docs/
+arrow-explain.md
