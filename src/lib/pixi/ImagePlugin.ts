@@ -1,4 +1,10 @@
-import { Application, ColorMatrixFilter, Graphics, Sprite, Texture } from "pixi.js";
+import {
+  Application,
+  ColorMatrixFilter,
+  Graphics,
+  Sprite,
+  Texture,
+} from "pixi.js";
 import type { ViewportBounds } from "./types.js";
 
 export class ImagePlugin {
@@ -250,6 +256,8 @@ export class ImagePlugin {
 
   /** Programmatic reset — callable from UI regardless of tool */
   resetView(): void {
+    // Ensure Pixi knows the current container size before fitting
+    this.app.resize();
     this.fitToViewport();
   }
 

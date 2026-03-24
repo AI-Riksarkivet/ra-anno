@@ -49,6 +49,7 @@
     let imagePlugin: ImagePlugin;
     let arrowPlugin: ArrowDataPlugin;
     let interaction: InteractionManager;
+    let resizeObs: ResizeObserver | null = null;
     let destroyed = false;
 
     (async () => {
@@ -67,6 +68,14 @@
       // Stop continuous rendering — render on demand only
       // This saves CPU/GPU when nothing is changing (document viewer, not a game)
       app.ticker.stop();
+
+      // Since ticker is stopped, Pixi's ResizeObserver won't trigger a render.
+      // Watch the container and re-render on size change.
+      resizeObs = new ResizeObserver(() => {
+        app.resize();
+        app.render();
+      });
+      resizeObs.observe(containerEl);
 
       imagePlugin = new ImagePlugin(app);
       arrowPlugin = new ArrowDataPlugin(app, colorFn, annotationStyle);
@@ -99,6 +108,7 @@
 
     return () => {
       destroyed = true;
+      resizeObs?.disconnect();
       interaction?.destroy();
       arrowPlugin?.destroy();
       imagePlugin?.destroy();
