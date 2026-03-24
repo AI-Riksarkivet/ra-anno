@@ -22,7 +22,11 @@
     panX?: number;
     panY?: number;
     colorFn?: (status: string) => number;
-    annotationStyle?: { fillAlpha?: number; strokeWidth?: number; strokeAlpha?: number };
+    annotationStyle?: {
+      fillAlpha?: number;
+      strokeWidth?: number;
+      strokeAlpha?: number;
+    };
     onready?: (ctx: PixiContext) => void;
   } = $props();
 
@@ -50,11 +54,16 @@
     let arrowPlugin: ArrowDataPlugin;
     let interaction: InteractionManager;
     let resizeObs: ResizeObserver | null = null;
+    let initialized = false;
     let destroyed = false;
 
     (async () => {
+      // Do NOT use resizeTo — we handle sizing ourselves via ResizeObserver
+      // to ensure re-render happens when ticker is stopped.
+      const { width, height } = containerEl.getBoundingClientRect();
       await app.init({
-        resizeTo: containerEl,
+        width: Math.max(width, 1),
+        height: Math.max(height, 1),
         preference: "webgpu",
         backgroundAlpha: 0,
         antialias: true,
@@ -62,21 +71,23 @@
         autoDensity: true,
       });
 
-      if (destroyed) return; // component unmounted during async init
+      if (destroyed) return;
       containerEl.appendChild(app.canvas);
+      initialized = true;
 
-      // Stop continuous rendering — render on demand only
-      // This saves CPU/GPU when nothing is changing (document viewer, not a game)
+      // Stop continuous 60fps rendering — render on demand only
       app.ticker.stop();
 
-      // Since ticker is stopped, Pixi won't re-render on container resize.
-      // Watch the container and re-render when size changes.
-      resizeObs = new ResizeObserver(() => {
-        if (destroyed || !app.renderer) return;
-        try {
-          app.resize();
+      // Watch container for size changes — resize renderer + re-render
+      resizeObs = new ResizeObserver((entries) => {
+        if (destroyed || !initialized) return;
+        const entry = entries[0];
+        if (!entry) return;
+        const { width: w, height: h } = entry.contentRect;
+        if (w > 0 && h > 0) {
+          app.renderer.resize(w, h);
           app.render();
-        } catch { /* ignore resize during teardown */ }
+        }
       });
       resizeObs.observe(containerEl);
 
@@ -100,9 +111,6 @@
       pixiCtx.plugins.interaction = interaction;
       ready = true;
 
-      const rendererType = app.renderer.type === 0x02 ? "webgpu" : "webgl";
-      console.log(`PixiJS renderer: ${rendererType}`);
-
       onready?.({
         app,
         plugins: { image: imagePlugin, arrow: arrowPlugin, interaction },
@@ -115,7 +123,9 @@
       interaction?.destroy();
       arrowPlugin?.destroy();
       imagePlugin?.destroy();
-      app.destroy(true, { children: true });
+      if (initialized) {
+        app.destroy(true, { children: true });
+      }
     };
   });
 </script>

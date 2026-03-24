@@ -256,8 +256,6 @@ export class ImagePlugin {
 
   /** Programmatic reset — callable from UI regardless of tool */
   resetView(): void {
-    // Ensure Pixi knows the current container size before fitting
-    this.app.resize();
     this.fitToViewport();
   }
 
