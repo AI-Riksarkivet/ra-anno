@@ -69,11 +69,14 @@
       // This saves CPU/GPU when nothing is changing (document viewer, not a game)
       app.ticker.stop();
 
-      // Since ticker is stopped, Pixi's ResizeObserver won't trigger a render.
-      // Watch the container and re-render on size change.
+      // Since ticker is stopped, Pixi won't re-render on container resize.
+      // Watch the container and re-render when size changes.
       resizeObs = new ResizeObserver(() => {
-        app.resize();
-        app.render();
+        if (destroyed || !app.renderer) return;
+        try {
+          app.resize();
+          app.render();
+        } catch { /* ignore resize during teardown */ }
       });
       resizeObs.observe(containerEl);
 

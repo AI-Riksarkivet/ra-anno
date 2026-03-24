@@ -36,6 +36,10 @@
   let splitOpen = $state(false);
   let splitCtx = $state<PixiContext | null>(null);
 
+  // Cached page image bytes — avoids re-fetch on split toggle
+  let cachedImageBytes: Uint8Array | null = null;
+  let cachedImageMime = "image/png";
+
   const pageId = $derived(data.pageId);
 
   // Materialized table (base + overlays) — for sidebar UI
@@ -68,34 +72,40 @@
     // Init mode — view by default, no editing until toggled
     ctx.plugins.interaction.setEditMode(mode === "edit");
 
-    // Load page image + annotations in PARALLEL (not sequential)
+    // Load page image (from cache if available, else fetch)
     const loadImage = (async () => {
       try {
-        const pageRes = await fetch(`/api/pages/${pageId}`);
-        if (!pageRes.ok) return;
-        const { tableFromIPC: parseIPC } = await import("apache-arrow");
-        const pageTable = parseIPC(
-          new Uint8Array(await pageRes.arrayBuffer()),
-        );
-        const imageCol = pageTable.getChild("image");
-        const mimeCol = pageTable.getChild("image_mime");
-        if (imageCol) {
-          const mime = String(mimeCol?.get(0) ?? "image/png");
-          const data = imageCol.data[0];
-          const offsets = data.valueOffsets;
-          const values = data.values;
-          if (offsets && values && offsets.length > 1) {
-            const imageBytes = values.subarray(offsets[0], offsets[1]);
-            await ctx.plugins.image.loadFromBytes(imageBytes, mime);
+        if (cachedImageBytes) {
+          await ctx.plugins.image.loadFromBytes(cachedImageBytes, cachedImageMime);
+        } else {
+          const pageRes = await fetch(`/api/pages/${pageId}`);
+          if (!pageRes.ok) return;
+          const { tableFromIPC: parseIPC } = await import("apache-arrow");
+          const pageTable = parseIPC(
+            new Uint8Array(await pageRes.arrayBuffer()),
+          );
+          const imageCol = pageTable.getChild("image");
+          const mimeCol = pageTable.getChild("image_mime");
+          if (imageCol) {
+            cachedImageMime = String(mimeCol?.get(0) ?? "image/png");
+            const idata = imageCol.data[0];
+            const offsets = idata.valueOffsets;
+            const values = idata.values;
+            if (offsets && values && offsets.length > 1) {
+              // Copy the bytes so they survive Arrow table GC
+              cachedImageBytes = new Uint8Array(values.subarray(offsets[0], offsets[1]));
+              await ctx.plugins.image.loadFromBytes(cachedImageBytes, cachedImageMime);
+            }
           }
         }
       } catch (e) {
         console.error("Page image load failed:", e);
       }
     })();
+
+    // Load annotations (cached in store — returns instantly if already loaded)
     const loadAnnotations = annotationStore.load(pageId);
 
-    // Wait for both to complete
     await Promise.all([loadImage, loadAnnotations]);
 
     // Drawing tool commits → append to Arrow store, auto-select the new shape
@@ -143,31 +153,15 @@
     // Arrow table only rebuilt on Save
   }
 
-  /** Second canvas for split/compare view — loads same page with same data */
+  /** Second canvas for split/compare view — uses cached data, no re-fetch */
   async function handleSplitReady(ctx: PixiContext) {
     splitCtx = ctx;
     ctx.plugins.interaction.setEditMode(false); // compare view is read-only
 
-    // Load same image + annotations as primary canvas
+    // Load image from cache (already fetched by primary)
     try {
-      const pageRes = await fetch(`/api/pages/${pageId}`);
-      if (pageRes.ok) {
-        const { tableFromIPC: parseIPC } = await import("apache-arrow");
-        const pageTable = parseIPC(new Uint8Array(await pageRes.arrayBuffer()));
-        const imageCol = pageTable.getChild("image");
-        const mimeCol = pageTable.getChild("image_mime");
-        if (imageCol) {
-          const mime = String(mimeCol?.get(0) ?? "image/png");
-          const idata = imageCol.data[0];
-          const offsets = idata.valueOffsets;
-          const values = idata.values;
-          if (offsets && values && offsets.length > 1) {
-            await ctx.plugins.image.loadFromBytes(
-              values.subarray(offsets[0], offsets[1]),
-              mime,
-            );
-          }
-        }
+      if (cachedImageBytes) {
+        await ctx.plugins.image.loadFromBytes(cachedImageBytes, cachedImageMime);
       }
     } catch { /* split image load failed — non-critical */ }
 
@@ -411,23 +405,19 @@
   <!-- Center: canvas area -->
   <div class="relative min-w-0 flex-1">
     {#if splitOpen}
-      <!-- Split view: primary + compare canvases with resizable divider -->
+      <!-- Split: two canvases side by side -->
       <Resizable.PaneGroup direction="horizontal" class="h-full">
         <Resizable.Pane defaultSize={50} minSize={20}>
           <div class="relative h-full w-full">
             <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
-            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">
-              Primary
-            </div>
+            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">Primary</div>
           </div>
         </Resizable.Pane>
         <Resizable.Handle withHandle />
         <Resizable.Pane defaultSize={50} minSize={20}>
           <div class="relative h-full w-full">
             <PixiCanvas colorFn={statusColor} onready={handleSplitReady} />
-            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">
-              Compare
-            </div>
+            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">Compare</div>
           </div>
         </Resizable.Pane>
       </Resizable.PaneGroup>
