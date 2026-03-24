@@ -311,22 +311,21 @@ export class ArrowDataPlugin {
         }
       }
 
-      // Materialize status strings once — reused until table changes
-      const statusCol = table.getChild("status");
+      // Use vector.memoize() for string columns — caches decoded strings
+      // after first access instead of eagerly materializing all N strings
+      const statusCol = table.getChild("status")?.memoize();
       this.statusStr = new Array(numRows);
       for (let i = 0; i < numRows; i++) {
         this.statusStr[i] = String(statusCol?.get(i) ?? "prediction");
       }
 
-      // Force group-by column re-cache too
       this.cachedGroupByCol = "";
     }
 
     // ── Phase 2: Cache group-by column ──
-    // Only re-materialize when column name changes (or table changed above).
     if (this.groupByColumn !== this.cachedGroupByCol) {
       this.cachedGroupByCol = this.groupByColumn;
-      const col = table.getChild(this.groupByColumn);
+      const col = table.getChild(this.groupByColumn)?.memoize();
       this.groupByStr = new Array(numRows);
       for (let i = 0; i < numRows; i++) {
         this.groupByStr[i] = String(col?.get(i) ?? "");

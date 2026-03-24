@@ -7,6 +7,10 @@ import {
   tableFromIPC,
   tableToIPC,
 } from "apache-arrow";
+// NOTE: makeTable (zero-copy for typed arrays) can't be used here because our
+// tables have mixed types (Float32 + Utf8 + List). tableFromArrays handles
+// type inference but always copies. The overlay pattern avoids rebuilds for
+// field edits — tableFromArrays only runs on rematerialize (sidebar) and save.
 
 // ── Helpers ──
 
