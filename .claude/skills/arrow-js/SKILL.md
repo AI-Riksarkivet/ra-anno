@@ -1,6 +1,6 @@
 ---
 name: Apache Arrow JS
-description: This skill should be used when working with Apache Arrow in JavaScript/TypeScript — Table, Vector, Schema, IPC serialization, columnar data, RecordBatch, Flight SQL, or imports from 'apache-arrow'. Covers zero-copy patterns, typed arrays, builder API, and Arrow Flight.
+description: This skill should be used when working with Apache Arrow in JavaScript/TypeScript — Table, Vector, Schema, IPC serialization, columnar data, RecordBatch, Flight SQL, Flechette, Arquero, Mosaic, DuckDB-WASM, or imports from 'apache-arrow', '@uwdata/flechette', '@uwdata/vgplot', 'arquero'. Covers zero-copy patterns, typed arrays, builder API, Arrow Flight, and the Arrow JS ecosystem.
 user-invocable: true
 context: current
 ---
@@ -397,4 +397,7 @@ const withMeta = new Table(
 - **`./references/anti-patterns.md`** — 10 common mistakes (row iteration, metadata loss, List gotchas, etc.)
 - **`./references/ipc-patterns.md`** — IPC streaming, chunked loading, HTTP transfer, delta updates
 - **`./references/flight-sql.md`** — Flight SQL client, gRPC, query execution
+- **`./references/flechette.md`** — Flechette: faster/smaller Arrow alternative, useProxy, toColumns, compression
+- **`./references/arquero.md`** — Arquero: dplyr-style data wrangling on Arrow (derive, filter, join, rollup)
+- **`./references/mosaic.md`** — Mosaic: scalable interactive viz framework (Coordinator, vgplot, SQL, cross-filtering)
 - **`./references/duckdb-wasm.md`** — DuckDB-WASM + Arrow in SvelteKit (SQL on Arrow in browser)
