@@ -13,6 +13,7 @@
     "npm:bits-ui@^2.16.3": "2.16.3_@internationalized+date@3.12.0_svelte@5.54.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1",
     "npm:clsx@2": "2.1.1",
     "npm:flatbush@^4.5.0": "4.5.1",
+    "npm:paneforge@^1.0.2": "1.0.2_svelte@5.54.1",
     "npm:pixi.js@^8.17.0": "8.17.1",
     "npm:prettier-plugin-svelte@^3.5.0": "3.5.1_prettier@3.8.1_svelte@5.54.1",
     "npm:prettier@*": "3.8.1",
@@ -595,9 +596,9 @@
         "@floating-ui/dom",
         "@internationalized/date",
         "esm-env",
-        "runed",
+        "runed@0.35.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1_svelte@5.54.1",
         "svelte",
-        "svelte-toolbelt",
+        "svelte-toolbelt@0.10.6_svelte@5.54.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1",
         "tabbable"
       ]
     },
@@ -905,6 +906,14 @@
     "node-fetch-native@1.6.7": {
       "integrity": "sha512-g9yhqoedzIUm0nTnTqAQvueMPVOuIY16bqgAJJC8XOOubYFNwz6IER9qs0Gq2Xd0+CecCKFjtdDTMA4u4xG06Q=="
     },
+    "paneforge@1.0.2_svelte@5.54.1": {
+      "integrity": "sha512-KzmIXQH1wCfwZ4RsMohD/IUtEjVhteR+c+ulb/CHYJHX8SuDXoJmChtsc/Xs5Wl8NHS4L5Q7cxL8MG40gSU1bA==",
+      "dependencies": [
+        "runed@0.23.4_svelte@5.54.1",
+        "svelte",
+        "svelte-toolbelt@0.9.3_svelte@5.54.1"
+      ]
+    },
     "parse-svg-path@0.1.2": {
       "integrity": "sha512-JyPSBnkTJ0AI8GGJLfMXvKq42cj5c006fnLz6fXy6zfoVjJizi8BNTpu8on8ziI1cKy9d9DGNuY17Ce7wuejpQ=="
     },
@@ -986,6 +995,20 @@
       ],
       "bin": true
     },
+    "runed@0.23.4_svelte@5.54.1": {
+      "integrity": "sha512-9q8oUiBYeXIDLWNK5DfCWlkL0EW3oGbk845VdKlPeia28l751VpfesaB/+7pI6rnbx1I6rqoZ2fZxptOJLxILA==",
+      "dependencies": [
+        "esm-env",
+        "svelte"
+      ]
+    },
+    "runed@0.29.2_svelte@5.54.1": {
+      "integrity": "sha512-0cq6cA6sYGZwl/FvVqjx9YN+1xEBu9sDDyuWdDW1yWX7JF2wmvmVKfH+hVCZs+csW+P3ARH92MjI3H9QTagOQA==",
+      "dependencies": [
+        "esm-env",
+        "svelte"
+      ]
+    },
     "runed@0.35.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1_svelte@5.54.1": {
       "integrity": "sha512-2F4Q/FZzbeJTFdIS/PuOoPRSm92sA2LhzTnv6FXhCoENb3huf5+fDuNOg1LNvGOouy3u/225qxmuJvcV3IZK5Q==",
       "dependencies": [
@@ -1066,7 +1089,16 @@
       "integrity": "sha512-YWuX+RE+CnWYx09yseAe4ZVMM7e7GRFZM6OYWpBKOb++s+SQ8RBIMMe+Bs/CznBMc0QPLjr+vDBxTAkozXsFXQ==",
       "dependencies": [
         "clsx",
-        "runed",
+        "runed@0.35.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1_svelte@5.54.1",
+        "style-to-object",
+        "svelte"
+      ]
+    },
+    "svelte-toolbelt@0.9.3_svelte@5.54.1": {
+      "integrity": "sha512-HCSWxCtVmv+c6g1ACb8LTwHVbDqLKJvHpo6J8TaqwUme2hj9ATJCpjCPNISR1OCq2Q4U1KT41if9ON0isINQZw==",
+      "dependencies": [
+        "clsx",
+        "runed@0.29.2_svelte@5.54.1",
         "style-to-object",
         "svelte"
       ]
@@ -1195,6 +1227,7 @@
         "npm:bits-ui@^2.16.3",
         "npm:clsx@2",
         "npm:flatbush@^4.5.0",
+        "npm:paneforge@^1.0.2",
         "npm:pixi.js@^8.17.0",
         "npm:prettier-plugin-svelte@^3.5.0",
         "npm:prettier@3",
