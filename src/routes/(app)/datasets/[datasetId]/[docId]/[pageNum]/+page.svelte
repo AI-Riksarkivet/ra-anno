@@ -6,6 +6,7 @@
   import PageGallery from "$lib/components/PageGallery.svelte";
   import AnnotationSidebar from "$lib/components/AnnotationSidebar.svelte";
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
+  import * as Resizable from "$lib/components/ui/resizable/index.js";
   import { statusColor } from "$lib/utils/color.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
@@ -347,85 +348,109 @@
   }}
 />
 
-<div class="flex h-full">
-  <!-- Left: vertical toolbar (always visible — select/lasso in view, all tools in edit) -->
-  <Toolbar
-    {mode}
-    onToggleMode={handleToggleMode}
-    {activeTool}
-    canUndo={annotationStore.canUndo}
-    canRedo={annotationStore.canRedo}
-    isDirty={annotationStore.isDirty(pageId) || hasGeometryEdits}
-    annotationCount={table?.numRows ?? 0}
-    onToolChange={handleToolChange}
-    onUndo={handleUndo}
-    onRedo={handleRedo}
-    onSave={handleSave}
-    {displayOpen}
-    onToggleDisplay={() => (displayOpen = !displayOpen)}
-    {galleryOpen}
-    onToggleGallery={() => (galleryOpen = !galleryOpen)}
-  />
+<Resizable.PaneGroup direction="horizontal" autoSaveId="viewer-layout" class="h-full">
+  <!-- Left: vertical toolbar -->
+  <Resizable.Pane defaultSize={3} minSize={3} maxSize={5}>
+    <Toolbar
+      {mode}
+      onToggleMode={handleToggleMode}
+      {activeTool}
+      canUndo={annotationStore.canUndo}
+      canRedo={annotationStore.canRedo}
+      isDirty={annotationStore.isDirty(pageId) || hasGeometryEdits}
+      annotationCount={table?.numRows ?? 0}
+      onToolChange={handleToolChange}
+      onUndo={handleUndo}
+      onRedo={handleRedo}
+      onSave={handleSave}
+      {displayOpen}
+      onToggleDisplay={() => (displayOpen = !displayOpen)}
+      {galleryOpen}
+      onToggleGallery={() => (galleryOpen = !galleryOpen)}
+    />
+  </Resizable.Pane>
+  <Resizable.Handle />
 
-  <!-- Center: canvas + all overlays -->
-  <div class="relative min-w-0 flex-1">
-    <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
+  <!-- Center: canvas area -->
+  <Resizable.Pane
+    defaultSize={72}
+    minSize={30}
+    onResize={() => {
+      // Pixi needs to know when the canvas container resizes
+      requestAnimationFrame(() => pixiCtx?.app.resize());
+    }}
+  >
+    <div class="relative h-full w-full">
+      <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
 
-    <!-- Display drawer overlay (top-left, over canvas) -->
-    {#if displayOpen}
-      <div class="absolute left-0 top-0 z-20 h-full">
-        <DisplayPanel
-          open={displayOpen}
-          columns={arrowColumns}
-          onClose={() => (displayOpen = false)}
-          onImageChange={handleImageChange}
-          onStyleChange={handleStyleChange}
-          onHeatmapChange={handleHeatmapChange}
+      <!-- Display drawer overlay (top-left, over canvas) -->
+      {#if displayOpen}
+        <div class="absolute left-0 top-0 z-20 h-full">
+          <DisplayPanel
+            open={displayOpen}
+            columns={arrowColumns}
+            onClose={() => (displayOpen = false)}
+            onImageChange={handleImageChange}
+            onStyleChange={handleStyleChange}
+            onHeatmapChange={handleHeatmapChange}
+          />
+        </div>
+      {/if}
+
+      <!-- Gallery drawer overlay (bottom, over canvas) -->
+      <PageGallery
+        open={galleryOpen}
+        pages={data.pages}
+        currentPageNum={data.pageNum}
+        datasetId={data.datasetId}
+        onNavigate={(pageNum) => goto(`/datasets/${data.datasetId}/${data.docId}/${pageNum}`)}
+      />
+
+      <!-- Floating zoom + pagination controls (bottom-right) -->
+      <div class="absolute bottom-2 right-2 z-10">
+        <ZoomControls
+          zoom={pixiCtx?.plugins.image.zoomPercent ?? 1}
+          currentPage={data.pageNum}
+          totalPages={data.totalPages}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onResetView={handleResetView}
+          onPrevPage={handlePrevPage}
+          onNextPage={handleNextPage}
         />
       </div>
-    {/if}
-
-    <!-- Gallery drawer overlay (bottom, over canvas) -->
-    <PageGallery
-      open={galleryOpen}
-      pages={data.pages}
-      currentPageNum={data.pageNum}
-      datasetId={data.datasetId}
-      onNavigate={(pageNum) => goto(`/datasets/${data.datasetId}/${data.docId}/${pageNum}`)}
-    />
-
-    <!-- Floating zoom + pagination controls (bottom-right) -->
-    <div class="absolute bottom-2 right-2 z-10">
-      <ZoomControls
-        zoom={pixiCtx?.plugins.image.zoomPercent ?? 1}
-        currentPage={data.pageNum}
-        totalPages={data.totalPages}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onResetView={handleResetView}
-        onPrevPage={handlePrevPage}
-        onNextPage={handleNextPage}
-      />
     </div>
-  </div>
+  </Resizable.Pane>
+  <Resizable.Handle withHandle />
 
-  <!-- Right: annotation sidebar -->
-  <AnnotationSidebar
-    {table}
-    {selectedIndex}
-    {selectedSet}
-    {mode}
-    onSelect={(i) => {
-      selectedIndex = i;
-      selectedSet = new Set();
-      pixiCtx?.plugins.interaction.select(i);
+  <!-- Right: annotation sidebar (collapsible) -->
+  <Resizable.Pane
+    defaultSize={25}
+    minSize={15}
+    collapsible
+    collapsedSize={0}
+    onResize={() => {
+      // Pixi reclaims space when sidebar resizes
+      requestAnimationFrame(() => pixiCtx?.app.resize());
     }}
-    onUpdateField={handleUpdateField}
-    onUpdateStatus={handleUpdateStatus}
-    onBulkUpdateField={handleBulkUpdateField}
-    onBulkUpdateStatus={handleBulkUpdateStatus}
-    onDelete={handleDelete}
-  />
-</div>
+  >
+    <AnnotationSidebar
+      {table}
+      {selectedIndex}
+      {selectedSet}
+      {mode}
+      onSelect={(i) => {
+        selectedIndex = i;
+        selectedSet = new Set();
+        pixiCtx?.plugins.interaction.select(i);
+      }}
+      onUpdateField={handleUpdateField}
+      onUpdateStatus={handleUpdateStatus}
+      onBulkUpdateField={handleBulkUpdateField}
+      onBulkUpdateStatus={handleBulkUpdateStatus}
+      onDelete={handleDelete}
+    />
+  </Resizable.Pane>
+</Resizable.PaneGroup>
 
 <KeyboardShortcuts />
