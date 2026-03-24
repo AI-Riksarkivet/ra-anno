@@ -1,4 +1,5 @@
 import {
+  DataType,
   Schema,
   type Table,
   Table as ArrowTable,
@@ -6,89 +7,15 @@ import {
   tableFromIPC,
   tableToIPC,
 } from "apache-arrow";
-import { undoStack } from "./undo.svelte.js";
 
 // ── Helpers ──
 
-/** Extract specific rows from a table, applying field overlays */
-function extractRowsWithOverlays(
-  table: Table,
-  indices: number[],
-  fieldOverrides: Map<number, Map<string, unknown>>,
-): Table {
-  if (indices.length === 0) return tableFromArrays({});
-  const cols: Record<string, unknown[]> = {};
-  for (const field of table.schema.fields) {
-    const col = table.getChild(field.name)!;
-    const isListCol = field.name === "polygon";
-    const arr: unknown[] = new Array(indices.length);
-    for (let j = 0; j < indices.length; j++) {
-      const i = indices[j];
-      // Check field overlay first
-      const override = fieldOverrides.get(i)?.get(field.name);
-      if (override !== undefined) {
-        arr[j] = override;
-      } else if (isListCol) {
-        arr[j] = arrowListToArray(col.get(i));
-      } else {
-        arr[j] = col.get(i);
-      }
-    }
-    cols[field.name] = arr;
-  }
-  return tableFromArrays(cols);
+/** Check if a field is a List type (e.g. polygon: List<Float32>) */
+function isListField(field: { type: DataType }): boolean {
+  return DataType.isList(field.type);
 }
 
-/** Build full table from Arrow base + overlays (only called on save) */
-function materializeTable(
-  base: Table,
-  fieldOverrides: Map<number, Map<string, unknown>>,
-  appendedRows: Record<string, unknown>[],
-  deletedIndices: Set<number>,
-): Table {
-  const n = base.numRows + appendedRows.length - deletedIndices.size;
-  const cols: Record<string, unknown[]> = {};
-  for (const field of base.schema.fields) {
-    cols[field.name] = new Array(n);
-  }
-
-  let dst = 0;
-  // Copy base rows (skip deleted)
-  for (let i = 0; i < base.numRows; i++) {
-    if (deletedIndices.has(i)) continue;
-    const rowOverrides = fieldOverrides.get(i);
-    for (const field of base.schema.fields) {
-      const override = rowOverrides?.get(field.name);
-      if (override !== undefined) {
-        cols[field.name][dst] = override;
-      } else if (field.name === "polygon") {
-        cols[field.name][dst] = arrowListToArray(
-          base.getChild(field.name)!.get(i),
-        );
-      } else {
-        cols[field.name][dst] = base.getChild(field.name)!.get(i);
-      }
-    }
-    dst++;
-  }
-  // Append new rows
-  for (const row of appendedRows) {
-    for (const field of base.schema.fields) {
-      cols[field.name][dst] = row[field.name] ?? null;
-    }
-    dst++;
-  }
-
-  const raw = tableFromArrays(cols);
-  // Preserve schema metadata
-  if (base.schema.metadata.size > 0) {
-    const schema = new Schema(raw.schema.fields, base.schema.metadata);
-    return new ArrowTable(schema, raw.batches);
-  }
-  return raw;
-}
-
-/** Convert Arrow List element to plain number array */
+/** Convert Arrow List element to plain JS array */
 function arrowListToArray(val: unknown): number[] | null {
   if (!val || typeof val !== "object") return null;
   const v = val as { length: number; get: (i: number) => number };
@@ -98,7 +25,86 @@ function arrowListToArray(val: unknown): number[] | null {
   return arr;
 }
 
-// ── Undo snapshot: captures overlay state, not full table rebuild ──
+/** Read a column value, converting List types to plain arrays */
+function readColumnValue(
+  col: import("apache-arrow").Vector,
+  i: number,
+  isList: boolean,
+): unknown {
+  if (isList) return arrowListToArray(col.get(i));
+  return col.get(i);
+}
+
+/** Build full table from Arrow base + overlays */
+function materializeTable(
+  base: Table,
+  fieldOverrides: Map<number, Map<string, unknown>>,
+  appendedRows: Record<string, unknown>[],
+  deletedIndices: Set<number>,
+): Table {
+  const n = base.numRows + appendedRows.length - deletedIndices.size;
+  const cols: Record<string, unknown[]> = {};
+  // Pre-check which fields are List type (avoid per-row string comparison)
+  const listFlags = base.schema.fields.map((f) => isListField(f));
+
+  for (const field of base.schema.fields) {
+    cols[field.name] = new Array(n);
+  }
+
+  let dst = 0;
+  for (let i = 0; i < base.numRows; i++) {
+    if (deletedIndices.has(i)) continue;
+    const rowOverrides = fieldOverrides.get(i);
+    for (let f = 0; f < base.schema.fields.length; f++) {
+      const field = base.schema.fields[f];
+      const override = rowOverrides?.get(field.name);
+      if (override !== undefined) {
+        cols[field.name][dst] = override;
+      } else {
+        cols[field.name][dst] = readColumnValue(
+          base.getChild(field.name)!,
+          i,
+          listFlags[f],
+        );
+      }
+    }
+    dst++;
+  }
+  for (const row of appendedRows) {
+    for (const field of base.schema.fields) {
+      cols[field.name][dst] = row[field.name] ?? null;
+    }
+    dst++;
+  }
+
+  const raw = tableFromArrays(cols);
+  if (base.schema.metadata.size > 0) {
+    return new ArrowTable(
+      new Schema(raw.schema.fields, base.schema.metadata),
+      raw.batches,
+    );
+  }
+  return raw;
+}
+
+/** Extract specific rows from a materialized table for delta save */
+function extractRows(table: Table, indices: number[]): Table {
+  if (indices.length === 0) return tableFromArrays({});
+  const listFlags = table.schema.fields.map((f) => isListField(f));
+  const cols: Record<string, unknown[]> = {};
+  for (let f = 0; f < table.schema.fields.length; f++) {
+    const field = table.schema.fields[f];
+    const col = table.getChild(field.name)!;
+    const arr: unknown[] = new Array(indices.length);
+    for (let j = 0; j < indices.length; j++) {
+      arr[j] = readColumnValue(col, indices[j], listFlags[f]);
+    }
+    cols[field.name] = arr;
+  }
+  return tableFromArrays(cols);
+}
+
+// ── Undo snapshot ──
 
 interface UndoSnapshot {
   fieldOverrides: Map<number, Map<string, unknown>>;
@@ -114,20 +120,17 @@ function cloneSnapshot(
   dids: Set<string>,
 ): UndoSnapshot {
   return {
-    fieldOverrides: new Map(
-      [...fo].map(([k, v]) => [k, new Map(v)]),
-    ),
+    fieldOverrides: new Map([...fo].map(([k, v]) => [k, new Map(v)])),
     appendedRows: ar.map((r) => ({ ...r })),
     deletedIndices: new Set(di),
     deletedIds: new Set(dids),
   };
 }
 
-class AnnotationStore {
-  // The server's Arrow table — NEVER modified after load. This is the read-only base.
-  private _serverTables = $state.raw<Record<string, Table>>({});
+// ── Store ──
 
-  // Overlays on top of the server table — O(1) per edit, no table rebuild
+class AnnotationStore {
+  private _serverTables = $state.raw<Record<string, Table>>({});
   private _fieldOverrides = $state<
     Record<string, Map<number, Map<string, unknown>>>
   >({});
@@ -136,35 +139,22 @@ class AnnotationStore {
   );
   private _deletedIndices = $state<Record<string, Set<number>>>({});
   private _deletedIds = $state<Record<string, Set<string>>>({});
-
-  // Undo: snapshots of overlay state (cheap — just Maps, not full tables)
   private _undoStack = $state<Record<string, UndoSnapshot[]>>({});
   private _redoStack = $state<Record<string, UndoSnapshot[]>>({});
-
-  // Version tracking for OCC
   private _versions = $state<Record<string, string>>({});
   private _dirty = $state<Record<string, boolean>>({});
   private _loading = $state<Record<string, boolean>>({});
-
-  // Materialized view — rebuilt only when overlays change (NOT the full Arrow table)
-  // This is what the UI and Pixi read from
   private _materializedTables = $state.raw<Record<string, Table>>({});
-
-  // Structural version — only bumps on append/delete (row count changes)
-  // Pixi watches this to avoid re-sync on field-only edits
   private _structuralVersion = $state<Record<string, number>>({});
 
-  /** The current table (base + overlays materialized) for UI consumption */
   table(pageId: string): Table | null {
     return this._materializedTables[pageId] ?? null;
   }
 
-  /** The server's original table (for reading columns zero-copy) */
   serverTable(pageId: string): Table | null {
     return this._serverTables[pageId] ?? null;
   }
 
-  /** Version counter that only increments on structural changes (append/delete/load/save) */
   structuralVersion(pageId: string): number {
     return this._structuralVersion[pageId] ?? 0;
   }
@@ -181,6 +171,16 @@ class AnnotationStore {
     return this._versions[pageId] ?? null;
   }
 
+  get canUndo(): boolean {
+    return Object.values(this._undoStack).some((s) => s.length > 0);
+  }
+
+  get canRedo(): boolean {
+    return Object.values(this._redoStack).some((s) => s.length > 0);
+  }
+
+  // ── Private helpers ──
+
   private getOverlays(pageId: string) {
     return {
       fields: this._fieldOverrides[pageId] ?? new Map(),
@@ -196,13 +196,15 @@ class AnnotationStore {
     const stack = this._undoStack[pageId] ?? [];
     stack.push(snapshot);
     this._undoStack = { ...this._undoStack, [pageId]: stack };
-    // Clear redo on new edit
     this._redoStack = { ...this._redoStack, [pageId]: [] };
   }
 
   private bumpStructural(pageId: string): void {
     const v = this._structuralVersion[pageId] ?? 0;
-    this._structuralVersion = { ...this._structuralVersion, [pageId]: v + 1 };
+    this._structuralVersion = {
+      ...this._structuralVersion,
+      [pageId]: v + 1,
+    };
   }
 
   private rematerialize(pageId: string): void {
@@ -217,6 +219,44 @@ class AnnotationStore {
     this._dirty = { ...this._dirty, [pageId]: true };
   }
 
+  private applyUndoSnapshot(pageId: string, snapshot: UndoSnapshot): void {
+    this._fieldOverrides = {
+      ...this._fieldOverrides,
+      [pageId]: snapshot.fieldOverrides,
+    };
+    this._appendedRows = {
+      ...this._appendedRows,
+      [pageId]: snapshot.appendedRows,
+    };
+    this._deletedIndices = {
+      ...this._deletedIndices,
+      [pageId]: snapshot.deletedIndices,
+    };
+    this._deletedIds = {
+      ...this._deletedIds,
+      [pageId]: snapshot.deletedIds,
+    };
+    this.bumpStructural(pageId);
+    this.rematerialize(pageId);
+  }
+
+  private clearOverlays(pageId: string): void {
+    this._fieldOverrides = {
+      ...this._fieldOverrides,
+      [pageId]: new Map(),
+    };
+    this._appendedRows = { ...this._appendedRows, [pageId]: [] };
+    this._deletedIndices = {
+      ...this._deletedIndices,
+      [pageId]: new Set(),
+    };
+    this._deletedIds = { ...this._deletedIds, [pageId]: new Set() };
+    this._undoStack = { ...this._undoStack, [pageId]: [] };
+    this._redoStack = { ...this._redoStack, [pageId]: [] };
+    this._dirty = { ...this._dirty, [pageId]: false };
+    this.bumpStructural(pageId);
+  }
+
   // ── Load ──
 
   async load(pageId: string): Promise<Table> {
@@ -227,8 +267,8 @@ class AnnotationStore {
 
     const res = await fetch(`/api/annotations/${pageId}`);
     if (!res.ok) {
-      // No annotations yet for this page — initialize with empty table
       this._loading = { ...this._loading, [pageId]: false };
+      // No annotations — create empty table
       const empty = tableFromArrays({
         id: [] as string[],
         page_id: [] as string[],
@@ -257,6 +297,7 @@ class AnnotationStore {
     const etag = res.headers.get("ETag") ?? "";
     this._versions = { ...this._versions, [pageId]: etag };
 
+    // Parse Arrow IPC — zero-copy for primitive columns
     if (!res.body) {
       const buffer = await res.arrayBuffer();
       const table = tableFromIPC(new Uint8Array(buffer));
@@ -270,7 +311,7 @@ class AnnotationStore {
       return table;
     }
 
-    // Stream
+    // Streaming: parse progressively
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let totalLen = 0;
@@ -290,7 +331,9 @@ class AnnotationStore {
             [pageId]: table,
           };
         }
-      } catch { /* incomplete stream */ }
+      } catch {
+        /* incomplete stream */
+      }
     }
 
     const combined = concatBytes(chunks, totalLen);
@@ -305,8 +348,9 @@ class AnnotationStore {
     return table;
   }
 
-  // ── Edits (O(1) — overlay only, no table rebuild) ──
+  // ── Edits ──
 
+  /** Field edit — O(1) overlay, rematerializes for sidebar but does NOT bump structural */
   updateLocal(
     pageId: string,
     rowIndex: number,
@@ -323,9 +367,11 @@ class AnnotationStore {
       row.set(k, v);
     }
     this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
-    this.rematerialize(pageId);
+    this.rematerialize(pageId); // sidebar needs updated table
+    // NOTE: no bumpStructural — Pixi uses setFieldOverride for rendering changes
   }
 
+  /** Batch field edit — same as updateLocal but for multiple rows */
   batchUpdateLocal(
     pageId: string,
     updatesMap: Map<number, Record<string, unknown>>,
@@ -345,8 +391,10 @@ class AnnotationStore {
     }
     this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
     this.rematerialize(pageId);
+    // NOTE: no bumpStructural
   }
 
+  /** Append row — structural change, bumps version */
   appendLocal(pageId: string, row: Record<string, unknown>): Table | null {
     const base = this._serverTables[pageId];
     if (!base) return null;
@@ -358,6 +406,7 @@ class AnnotationStore {
     return this._materializedTables[pageId] ?? null;
   }
 
+  /** Delete row — structural change, bumps version */
   deleteLocal(pageId: string, rowIndex: number): void {
     const base = this._serverTables[pageId];
     if (!base) return;
@@ -365,7 +414,6 @@ class AnnotationStore {
 
     const baseRows = base.numRows;
     if (rowIndex < baseRows) {
-      // Deleting a server row — track by index and ID
       const deleted = new Set(this._deletedIndices[pageId] ?? []);
       deleted.add(rowIndex);
       this._deletedIndices = { ...this._deletedIndices, [pageId]: deleted };
@@ -377,23 +425,15 @@ class AnnotationStore {
         this._deletedIds = { ...this._deletedIds, [pageId]: deletedIds };
       }
 
-      // Remove any field overrides for this row
       const fields = this._fieldOverrides[pageId];
       if (fields) {
         fields.delete(rowIndex);
         this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
       }
     } else {
-      // Deleting an appended row
-      const appendedIndex = rowIndex - baseRows;
       const appended = [...(this._appendedRows[pageId] ?? [])];
-      // Adjust for already-deleted base rows
       const deleted = this._deletedIndices[pageId] ?? new Set();
-      let actualAppendedIdx = appendedIndex;
-      for (const d of deleted) {
-        if (d <= rowIndex) actualAppendedIdx++;
-      }
-      actualAppendedIdx = rowIndex - baseRows + deleted.size;
+      const actualAppendedIdx = rowIndex - baseRows + deleted.size;
       if (actualAppendedIdx >= 0 && actualAppendedIdx < appended.length) {
         appended.splice(actualAppendedIdx, 1);
         this._appendedRows = { ...this._appendedRows, [pageId]: appended };
@@ -404,46 +444,21 @@ class AnnotationStore {
     this.rematerialize(pageId);
   }
 
-  // ── Undo / Redo (swap overlay snapshots — no table involved) ──
-
-  get canUndo(): boolean {
-    return Object.values(this._undoStack).some((s) => s.length > 0);
-  }
-
-  get canRedo(): boolean {
-    return Object.values(this._redoStack).some((s) => s.length > 0);
-  }
+  // ── Undo / Redo ──
 
   undo(pageId: string): Table | null {
     const stack = this._undoStack[pageId];
     if (!stack || stack.length === 0) return null;
 
-    // Save current state to redo
     const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
     const current = cloneSnapshot(fields, appended, deleted, deletedIds);
     const redo = this._redoStack[pageId] ?? [];
     redo.push(current);
     this._redoStack = { ...this._redoStack, [pageId]: redo };
 
-    // Pop previous state
     const prev = stack.pop()!;
     this._undoStack = { ...this._undoStack, [pageId]: stack };
-    this._fieldOverrides = {
-      ...this._fieldOverrides,
-      [pageId]: prev.fieldOverrides,
-    };
-    this._appendedRows = {
-      ...this._appendedRows,
-      [pageId]: prev.appendedRows,
-    };
-    this._deletedIndices = {
-      ...this._deletedIndices,
-      [pageId]: prev.deletedIndices,
-    };
-    this._deletedIds = { ...this._deletedIds, [pageId]: prev.deletedIds };
-
-    this.bumpStructural(pageId);
-    this.rematerialize(pageId);
+    this.applyUndoSnapshot(pageId, prev);
     return this._materializedTables[pageId] ?? null;
   }
 
@@ -451,44 +466,25 @@ class AnnotationStore {
     const stack = this._redoStack[pageId];
     if (!stack || stack.length === 0) return null;
 
-    // Save current to undo
     const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
     const current = cloneSnapshot(fields, appended, deleted, deletedIds);
     const undo = this._undoStack[pageId] ?? [];
     undo.push(current);
     this._undoStack = { ...this._undoStack, [pageId]: undo };
 
-    // Pop next state
     const next = stack.pop()!;
     this._redoStack = { ...this._redoStack, [pageId]: stack };
-    this._fieldOverrides = {
-      ...this._fieldOverrides,
-      [pageId]: next.fieldOverrides,
-    };
-    this._appendedRows = {
-      ...this._appendedRows,
-      [pageId]: next.appendedRows,
-    };
-    this._deletedIndices = {
-      ...this._deletedIndices,
-      [pageId]: next.deletedIndices,
-    };
-    this._deletedIds = { ...this._deletedIds, [pageId]: next.deletedIds };
-
-    this.bumpStructural(pageId);
-    this.rematerialize(pageId);
+    this.applyUndoSnapshot(pageId, next);
     return this._materializedTables[pageId] ?? null;
   }
 
-  // ── Save (delta only — builds table from overlays, not full base) ──
+  // ── Save ──
 
   async save(pageId: string): Promise<Table> {
     const base = this._serverTables[pageId];
     if (!base) throw new Error("No table to save");
 
     const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
-
-    // Build delta: only modified + appended rows
     const dirtyBaseIndices = [...fields.keys()].filter(
       (i) => !deleted.has(i),
     );
@@ -499,16 +495,11 @@ class AnnotationStore {
     let method: string;
 
     if (hasChanges && (dirtyBaseIndices.length > 0 || appended.length > 0)) {
-      // Build delta table: modified base rows + appended rows
       const materialized = this._materializedTables[pageId];
       if (!materialized) throw new Error("No materialized table");
 
-      // Find indices of dirty rows in the materialized table
-      // Materialized = base rows (minus deleted, with overrides) + appended
       const matBaseCount = base.numRows - deleted.size;
       const matIndices: number[] = [];
-
-      // Map base dirty indices to materialized indices (accounting for deleted rows before them)
       for (const baseIdx of dirtyBaseIndices) {
         let matIdx = baseIdx;
         for (const d of deleted) {
@@ -516,24 +507,17 @@ class AnnotationStore {
         }
         matIndices.push(matIdx);
       }
-
-      // Appended rows are at the end of materialized table
       for (let a = 0; a < appended.length; a++) {
         matIndices.push(matBaseCount + a);
       }
 
-      const delta = extractRowsWithOverlays(
-        materialized,
-        matIndices,
-        new Map(),
-      );
+      const delta = extractRows(materialized, matIndices);
       ipc = tableToIPC(delta, "stream");
       method = "PATCH";
     } else if (deletedIds.size > 0) {
       ipc = new Uint8Array(0);
       method = "PATCH";
     } else {
-      // No changes — shouldn't happen but fallback to full table
       const materialized = this._materializedTables[pageId];
       if (!materialized) throw new Error("No materialized table");
       ipc = tableToIPC(materialized, "stream");
@@ -573,23 +557,6 @@ class AnnotationStore {
     };
     this.clearOverlays(pageId);
     return fresh;
-  }
-
-  private clearOverlays(pageId: string): void {
-    this._fieldOverrides = {
-      ...this._fieldOverrides,
-      [pageId]: new Map(),
-    };
-    this._appendedRows = { ...this._appendedRows, [pageId]: [] };
-    this._deletedIndices = {
-      ...this._deletedIndices,
-      [pageId]: new Set(),
-    };
-    this._deletedIds = { ...this._deletedIds, [pageId]: new Set() };
-    this._undoStack = { ...this._undoStack, [pageId]: [] };
-    this._redoStack = { ...this._redoStack, [pageId]: [] };
-    this._dirty = { ...this._dirty, [pageId]: false };
-    this.bumpStructural(pageId);
   }
 }
 
