@@ -10,3 +10,4 @@ storybook-static/
 llms-full.txt
 anno/
 .deno-deploy/
+arrow/docs/
