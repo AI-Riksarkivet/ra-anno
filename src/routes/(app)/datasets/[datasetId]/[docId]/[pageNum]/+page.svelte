@@ -408,12 +408,16 @@
     {splitOpen}
   />
 
-  <!-- Center: canvas area (uses Resizable only when split view is active) -->
+  <!-- Center: canvas area -->
   <div class="relative min-w-0 flex-1">
     {#if splitOpen}
-      <!-- Split view: two canvases side by side, resizable divider -->
+      <!-- Split view: primary + compare canvases with resizable divider -->
       <Resizable.PaneGroup direction="horizontal" class="h-full">
-        <Resizable.Pane defaultSize={50} minSize={20}>
+        <Resizable.Pane
+          defaultSize={50}
+          minSize={20}
+          onResize={() => requestAnimationFrame(() => pixiCtx?.app.resize())}
+        >
           <div class="relative h-full w-full">
             <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
             <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">
@@ -422,7 +426,11 @@
           </div>
         </Resizable.Pane>
         <Resizable.Handle withHandle />
-        <Resizable.Pane defaultSize={50} minSize={20}>
+        <Resizable.Pane
+          defaultSize={50}
+          minSize={20}
+          onResize={() => requestAnimationFrame(() => splitCtx?.app.resize())}
+        >
           <div class="relative h-full w-full">
             <PixiCanvas colorFn={statusColor} onready={handleSplitReady} />
             <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">
