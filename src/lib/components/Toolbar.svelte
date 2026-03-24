@@ -14,6 +14,7 @@
   import SaveIcon from "@lucide/svelte/icons/save";
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
   import LayoutGrid from "@lucide/svelte/icons/layout-grid";
+  import Columns2 from "@lucide/svelte/icons/columns-2";
   import Eye from "@lucide/svelte/icons/eye";
   import Pencil from "@lucide/svelte/icons/pencil";
 
@@ -33,6 +34,8 @@
     onToggleDisplay,
     galleryOpen = false,
     onToggleGallery,
+    splitOpen = false,
+    onToggleSplit,
   }: {
     activeTool?: Tool;
     canUndo?: boolean;
@@ -49,6 +52,8 @@
     onToggleDisplay?: () => void;
     galleryOpen?: boolean;
     onToggleGallery?: () => void;
+    splitOpen?: boolean;
+    onToggleSplit?: () => void;
   } = $props();
 </script>
 
@@ -207,6 +212,17 @@
       </Button>
     </div>
   {/if}
+
+  <!-- Split view toggle (always visible) -->
+  <Button
+    variant={splitOpen ? "default" : "ghost"}
+    size="sm"
+    class="h-8 w-8 p-0"
+    title="Split view — compare annotations"
+    onclick={() => onToggleSplit?.()}
+  >
+    <Columns2 class="h-4 w-4" />
+  </Button>
 
   <!-- Bottom spacer + status -->
   <div class="mt-auto flex flex-col items-center gap-1">

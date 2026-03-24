@@ -33,6 +33,8 @@
   let hasGeometryEdits = $state(false);
   let displayOpen = $state(false);
   let galleryOpen = $state(false);
+  let splitOpen = $state(false);
+  let splitCtx = $state<PixiContext | null>(null);
 
   const pageId = $derived(data.pageId);
 
@@ -139,6 +141,42 @@
 
     // Editor handle drags → dirty overlay (NO Arrow table rebuild)
     // Arrow table only rebuilt on Save
+  }
+
+  /** Second canvas for split/compare view — loads same page with same data */
+  async function handleSplitReady(ctx: PixiContext) {
+    splitCtx = ctx;
+    ctx.plugins.interaction.setEditMode(false); // compare view is read-only
+
+    // Load same image + annotations as primary canvas
+    try {
+      const pageRes = await fetch(`/api/pages/${pageId}`);
+      if (pageRes.ok) {
+        const { tableFromIPC: parseIPC } = await import("apache-arrow");
+        const pageTable = parseIPC(new Uint8Array(await pageRes.arrayBuffer()));
+        const imageCol = pageTable.getChild("image");
+        const mimeCol = pageTable.getChild("image_mime");
+        if (imageCol) {
+          const mime = String(mimeCol?.get(0) ?? "image/png");
+          const idata = imageCol.data[0];
+          const offsets = idata.valueOffsets;
+          const values = idata.values;
+          if (offsets && values && offsets.length > 1) {
+            await ctx.plugins.image.loadFromBytes(
+              values.subarray(offsets[0], offsets[1]),
+              mime,
+            );
+          }
+        }
+      }
+    } catch { /* split image load failed — non-critical */ }
+
+    // Load annotations into the split canvas
+    const st = annotationStore.serverTable(pageId);
+    if (st) {
+      ctx.plugins.arrow.load(st);
+      ctx.plugins.arrow.sync();
+    }
   }
 
   function handleToggleMode() {
@@ -348,109 +386,111 @@
   }}
 />
 
-<Resizable.PaneGroup direction="horizontal" autoSaveId="viewer-layout" class="h-full">
-  <!-- Left: vertical toolbar -->
-  <Resizable.Pane defaultSize={3} minSize={3} maxSize={5}>
-    <Toolbar
-      {mode}
-      onToggleMode={handleToggleMode}
-      {activeTool}
-      canUndo={annotationStore.canUndo}
-      canRedo={annotationStore.canRedo}
-      isDirty={annotationStore.isDirty(pageId) || hasGeometryEdits}
-      annotationCount={table?.numRows ?? 0}
-      onToolChange={handleToolChange}
-      onUndo={handleUndo}
-      onRedo={handleRedo}
-      onSave={handleSave}
-      {displayOpen}
-      onToggleDisplay={() => (displayOpen = !displayOpen)}
-      {galleryOpen}
-      onToggleGallery={() => (galleryOpen = !galleryOpen)}
-    />
-  </Resizable.Pane>
-  <Resizable.Handle />
+<div class="flex h-full">
+  <!-- Left: toolbar (fixed width) -->
+  <Toolbar
+    {mode}
+    onToggleMode={handleToggleMode}
+    {activeTool}
+    canUndo={annotationStore.canUndo}
+    canRedo={annotationStore.canRedo}
+    isDirty={annotationStore.isDirty(pageId) || hasGeometryEdits}
+    annotationCount={table?.numRows ?? 0}
+    onToolChange={handleToolChange}
+    onUndo={handleUndo}
+    onRedo={handleRedo}
+    onSave={handleSave}
+    {displayOpen}
+    onToggleDisplay={() => (displayOpen = !displayOpen)}
+    {galleryOpen}
+    onToggleGallery={() => (galleryOpen = !galleryOpen)}
+    onToggleSplit={() => (splitOpen = !splitOpen)}
+    {splitOpen}
+  />
 
-  <!-- Center: canvas area -->
-  <Resizable.Pane
-    defaultSize={72}
-    minSize={30}
-    onResize={() => {
-      // Pixi needs to know when the canvas container resizes
-      requestAnimationFrame(() => pixiCtx?.app.resize());
-    }}
-  >
-    <div class="relative h-full w-full">
+  <!-- Center: canvas area (uses Resizable only when split view is active) -->
+  <div class="relative min-w-0 flex-1">
+    {#if splitOpen}
+      <!-- Split view: two canvases side by side, resizable divider -->
+      <Resizable.PaneGroup direction="horizontal" class="h-full">
+        <Resizable.Pane defaultSize={50} minSize={20}>
+          <div class="relative h-full w-full">
+            <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
+            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">
+              Primary
+            </div>
+          </div>
+        </Resizable.Pane>
+        <Resizable.Handle withHandle />
+        <Resizable.Pane defaultSize={50} minSize={20}>
+          <div class="relative h-full w-full">
+            <PixiCanvas colorFn={statusColor} onready={handleSplitReady} />
+            <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">
+              Compare
+            </div>
+          </div>
+        </Resizable.Pane>
+      </Resizable.PaneGroup>
+    {:else}
+      <!-- Single canvas -->
       <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
+    {/if}
 
-      <!-- Display drawer overlay (top-left, over canvas) -->
-      {#if displayOpen}
-        <div class="absolute left-0 top-0 z-20 h-full">
-          <DisplayPanel
-            open={displayOpen}
-            columns={arrowColumns}
-            onClose={() => (displayOpen = false)}
-            onImageChange={handleImageChange}
-            onStyleChange={handleStyleChange}
-            onHeatmapChange={handleHeatmapChange}
-          />
-        </div>
-      {/if}
-
-      <!-- Gallery drawer overlay (bottom, over canvas) -->
-      <PageGallery
-        open={galleryOpen}
-        pages={data.pages}
-        currentPageNum={data.pageNum}
-        datasetId={data.datasetId}
-        onNavigate={(pageNum) => goto(`/datasets/${data.datasetId}/${data.docId}/${pageNum}`)}
-      />
-
-      <!-- Floating zoom + pagination controls (bottom-right) -->
-      <div class="absolute bottom-2 right-2 z-10">
-        <ZoomControls
-          zoom={pixiCtx?.plugins.image.zoomPercent ?? 1}
-          currentPage={data.pageNum}
-          totalPages={data.totalPages}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onResetView={handleResetView}
-          onPrevPage={handlePrevPage}
-          onNextPage={handleNextPage}
+    <!-- Display drawer overlay (top-left, over canvas) -->
+    {#if displayOpen}
+      <div class="absolute left-0 top-0 z-20 h-full">
+        <DisplayPanel
+          open={displayOpen}
+          columns={arrowColumns}
+          onClose={() => (displayOpen = false)}
+          onImageChange={handleImageChange}
+          onStyleChange={handleStyleChange}
+          onHeatmapChange={handleHeatmapChange}
         />
       </div>
-    </div>
-  </Resizable.Pane>
-  <Resizable.Handle withHandle />
+    {/if}
 
-  <!-- Right: annotation sidebar (collapsible) -->
-  <Resizable.Pane
-    defaultSize={25}
-    minSize={15}
-    collapsible
-    collapsedSize={0}
-    onResize={() => {
-      // Pixi reclaims space when sidebar resizes
-      requestAnimationFrame(() => pixiCtx?.app.resize());
-    }}
-  >
-    <AnnotationSidebar
-      {table}
-      {selectedIndex}
-      {selectedSet}
-      {mode}
-      onSelect={(i) => {
-        selectedIndex = i;
-        selectedSet = new Set();
-        pixiCtx?.plugins.interaction.select(i);
-      }}
-      onUpdateField={handleUpdateField}
-      onUpdateStatus={handleUpdateStatus}
-      onBulkUpdateField={handleBulkUpdateField}
-      onBulkUpdateStatus={handleBulkUpdateStatus}
-      onDelete={handleDelete}
+    <!-- Gallery drawer overlay (bottom, over canvas) -->
+    <PageGallery
+      open={galleryOpen}
+      pages={data.pages}
+      currentPageNum={data.pageNum}
+      datasetId={data.datasetId}
+      onNavigate={(pageNum) => goto(`/datasets/${data.datasetId}/${data.docId}/${pageNum}`)}
     />
-  </Resizable.Pane>
-</Resizable.PaneGroup>
+
+    <!-- Floating zoom + pagination controls (bottom-right) -->
+    <div class="absolute bottom-2 right-2 z-10">
+      <ZoomControls
+        zoom={pixiCtx?.plugins.image.zoomPercent ?? 1}
+        currentPage={data.pageNum}
+        totalPages={data.totalPages}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onResetView={handleResetView}
+        onPrevPage={handlePrevPage}
+        onNextPage={handleNextPage}
+      />
+    </div>
+  </div>
+
+  <!-- Right: annotation sidebar (fixed width) -->
+  <AnnotationSidebar
+    {table}
+    {selectedIndex}
+    {selectedSet}
+    {mode}
+    onSelect={(i) => {
+      selectedIndex = i;
+      selectedSet = new Set();
+      pixiCtx?.plugins.interaction.select(i);
+    }}
+    onUpdateField={handleUpdateField}
+    onUpdateStatus={handleUpdateStatus}
+    onBulkUpdateField={handleBulkUpdateField}
+    onBulkUpdateStatus={handleBulkUpdateStatus}
+    onDelete={handleDelete}
+  />
+</div>
 
 <KeyboardShortcuts />
