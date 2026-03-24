@@ -35,6 +35,10 @@
   let galleryOpen = $state(false);
   let splitOpen = $state(false);
   let splitCtx = $state<PixiContext | null>(null);
+  // Tracks which canvas (primary or compare) toolbar actions should target
+  let activeCtx = $state<PixiContext | null>(null);
+  /** The context that toolbar actions operate on — primary by default */
+  const toolbarCtx = $derived(splitOpen ? (activeCtx ?? pixiCtx) : pixiCtx);
 
   // Cached page image bytes — avoids re-fetch on split toggle
   let cachedImageBytes: Uint8Array | null = null;
@@ -185,7 +189,9 @@
 
   function handleToolChange(tool: Tool) {
     activeTool = tool;
+    // Apply tool to both canvases so whichever you interact with uses the right tool
     pixiCtx?.plugins.interaction.setTool(tool);
+    splitCtx?.plugins.interaction.setTool(tool);
   }
 
   const currentPageIndex = $derived(data.pages.findIndex((p: { page_num: number }) => p.page_num === data.pageNum));
@@ -203,15 +209,15 @@
   }
 
   function handleZoomIn() {
-    pixiCtx?.plugins.image.zoomIn();
+    toolbarCtx?.plugins.image.zoomIn();
   }
 
   function handleZoomOut() {
-    pixiCtx?.plugins.image.zoomOut();
+    toolbarCtx?.plugins.image.zoomOut();
   }
 
   function handleResetView() {
-    pixiCtx?.plugins.image.resetView();
+    toolbarCtx?.plugins.image.resetView();
   }
 
   function handleImageChange(brightness: number, contrast: number, saturation: number) {
@@ -400,14 +406,22 @@
       <!-- Split: two canvases side by side -->
       <Resizable.PaneGroup direction="horizontal" class="h-full">
         <Resizable.Pane defaultSize={50} minSize={20}>
-          <div class="relative h-full w-full">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="relative h-full w-full"
+            onmouseenter={() => { activeCtx = pixiCtx; }}
+          >
             <PixiCanvas bind:zoom bind:panX bind:panY colorFn={statusColor} onready={handleReady} />
             <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">Primary</div>
           </div>
         </Resizable.Pane>
         <Resizable.Handle withHandle />
         <Resizable.Pane defaultSize={50} minSize={20}>
-          <div class="relative h-full w-full">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="relative h-full w-full"
+            onmouseenter={() => { activeCtx = splitCtx; }}
+          >
             <PixiCanvas colorFn={statusColor} onready={handleSplitReady} />
             <div class="absolute left-2 top-2 z-10 rounded bg-background/80 px-2 py-0.5 text-xs text-muted-foreground">Compare</div>
           </div>

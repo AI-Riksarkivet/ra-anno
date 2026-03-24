@@ -72,7 +72,12 @@
       });
 
       if (destroyed) return;
-      containerEl.appendChild(app.canvas);
+      // Constrain canvas to its container — critical for PaneForge resizable panes
+      const canvas = app.canvas as HTMLCanvasElement;
+      canvas.style.display = "block";
+      canvas.style.maxWidth = "100%";
+      canvas.style.maxHeight = "100%";
+      containerEl.appendChild(canvas);
       initialized = true;
 
       // Stop continuous 60fps rendering — render on demand only
