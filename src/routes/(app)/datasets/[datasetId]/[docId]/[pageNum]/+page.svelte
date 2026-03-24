@@ -42,17 +42,13 @@
 
   const pageId = $derived(data.pageId);
 
-  // Materialized table (base + overlays) — for sidebar UI
+  // Materialized table (base + overlays) — for both sidebar UI and Pixi rendering
   const table = $derived(annotationStore.table(pageId));
-  // Server table (stable reference) — for Pixi rendering (zero-copy Float32 views)
-  const serverTable = $derived(annotationStore.serverTable(pageId));
 
-  // Pixi reads from the server table (stable, zero-copy).
-  // Only re-syncs when server table changes (load/save) or layer config changes.
-  // Field edits (label, text, status) do NOT trigger Pixi re-sync.
+  // Pixi syncs when table changes (edits, appends, deletes) or layer config changes
   $effect(() => {
     if (!pixiCtx) return;
-    const t = serverTable;
+    const t = table;
     const hidden = layerStore.hiddenGroups;
     const groupBy = layerStore.groupByColumn;
     const colors = layerStore.groupColors;
@@ -157,6 +153,7 @@
   async function handleSplitReady(ctx: PixiContext) {
     splitCtx = ctx;
     ctx.plugins.interaction.setEditMode(false); // compare view is read-only
+    ctx.plugins.interaction.setTool("select");
 
     // Load image from cache (already fetched by primary)
     try {
@@ -165,10 +162,10 @@
       }
     } catch { /* split image load failed — non-critical */ }
 
-    // Load annotations into the split canvas
-    const st = annotationStore.serverTable(pageId);
-    if (st) {
-      ctx.plugins.arrow.load(st);
+    // Load annotations from materialized table (includes appended rows)
+    const t = annotationStore.table(pageId);
+    if (t) {
+      ctx.plugins.arrow.load(t);
       ctx.plugins.arrow.sync();
     }
   }
@@ -271,15 +268,10 @@
 
   function handleUpdateField(index: number, field: string, value: string) {
     annotationStore.updateLocal(pageId, index, { [field]: value });
-    // Patch Pixi's cached strings if this field affects rendering (color/grouping)
-    pixiCtx?.plugins.arrow.setFieldOverride(index, field, value);
-    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleUpdateStatus(index: number, status: AnnotationStatus) {
     annotationStore.updateLocal(pageId, index, { status });
-    pixiCtx?.plugins.arrow.setFieldOverride(index, "status", status);
-    pixiCtx?.plugins.arrow.sync();
   }
 
   function handleBulkUpdateField(
