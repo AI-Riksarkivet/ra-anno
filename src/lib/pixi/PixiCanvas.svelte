@@ -137,7 +137,7 @@
 
 <div
   bind:this={containerEl}
-  class="relative h-full w-full overflow-hidden"
+  class="pixi-grid relative h-full w-full overflow-hidden"
   style="cursor: default;"
 >
   {#if ready && children}

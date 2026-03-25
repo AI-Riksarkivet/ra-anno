@@ -173,3 +173,10 @@
 		display: none;
   }
 }
+
+/* Subtle dot-grid background for the Pixi canvas */
+.pixi-grid {
+  background-color: var(--background);
+  background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+  background-size: 20px 20px;
+}
