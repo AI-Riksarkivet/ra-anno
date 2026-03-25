@@ -110,19 +110,29 @@
 
 <!-- Vertical left sidebar toolbar -->
 <div class="flex h-full w-11 flex-col items-center border-r bg-background py-2">
-  <!-- Mode toggle -->
+  <!-- Mode toggle (switch style) -->
   <button
-    class="mb-2 flex h-8 w-8 items-center justify-center rounded-md text-xs font-medium transition-colors {mode === 'edit' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border hover:bg-accent'}"
+    class="relative mb-2 flex h-[38px] w-8 items-center rounded-full border p-0.5 transition-colors {mode === 'edit' ? 'border-primary bg-primary/15' : 'border-border bg-muted/50'}"
     title={mode === "view" ? "Switch to Edit mode" : "Switch to View mode"}
     onclick={() => onToggleMode?.()}
   >
-    {#if mode === "edit"}
-      <AnimatedShinyText shimmerWidth={60} class="text-primary-foreground">
-        <Pencil class="h-4 w-4" />
-      </AnimatedShinyText>
-    {:else}
-      <Eye class="h-4 w-4" />
-    {/if}
+    <!-- Track labels -->
+    <div class="absolute inset-0 flex flex-col items-center justify-between py-1.5">
+      <Eye class="h-2.5 w-2.5 {mode === 'view' ? 'opacity-0' : 'opacity-30'}" />
+      <Pencil class="h-2.5 w-2.5 {mode === 'edit' ? 'opacity-0' : 'opacity-30'}" />
+    </div>
+    <!-- Thumb -->
+    <div
+      class="relative z-10 flex h-4 w-full items-center justify-center rounded-full shadow-sm transition-all duration-200 {mode === 'edit' ? 'translate-y-[17px] bg-primary text-primary-foreground' : 'translate-y-0 bg-background text-foreground'}"
+    >
+      {#if mode === "edit"}
+        <AnimatedShinyText shimmerWidth={40} class="flex items-center text-primary-foreground">
+          <Pencil class="h-3 w-3" />
+        </AnimatedShinyText>
+      {:else}
+        <Eye class="h-3 w-3" />
+      {/if}
+    </div>
   </button>
 
   <Separator class="mb-2 w-6" />
