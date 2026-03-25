@@ -132,86 +132,41 @@
     ];
   }
 
-  // Pre-configured pipeline nodes
+  // Pre-configured pipeline nodes — 5 columns, left→right
   let nodes = $state.raw<PipelineNodeType[]>([
-    {
-      id: "dataset",
-      type: "pipeline",
-      position: { x: 0, y: 200 },
-      data: { label: "Dataset", description: "mock-dataset-001 (120 pages)", icon: Database, category: "data", status: "active" },
-    },
-    {
-      id: "active-learning",
-      type: "pipeline",
-      position: { x: 280, y: 80 },
-      data: { label: "Active Learning", description: "Uncertainty sampling, batch=20", icon: Target, category: "sampling", status: "idle" },
-    },
-    {
-      id: "stratified",
-      type: "pipeline",
-      position: { x: 280, y: 200 },
-      data: { label: "Stratified Sampler", description: "Balance by doc_type & status", icon: BarChart3, category: "sampling", status: "active" },
-    },
-    {
-      id: "random-sample",
-      type: "pipeline",
-      position: { x: 280, y: 320 },
-      data: { label: "Random Sample", description: "n=50, seed=42", icon: Shuffle, category: "sampling", status: "idle" },
-    },
-    {
-      id: "ai-labeler-trocr",
-      type: "pipeline",
-      position: { x: 580, y: 80 },
-      data: { label: "AI Labeler: TrOCR", description: "trocr-v2-riksarkivet", icon: Sparkles, category: "labeling", status: "running" },
-    },
-    {
-      id: "ai-labeler-layout",
-      type: "pipeline",
-      position: { x: 580, y: 200 },
-      data: { label: "AI Labeler: Layout", description: "dit-base, layout analysis", icon: BrainCircuit, category: "labeling", status: "active" },
-    },
-    {
-      id: "weak-supervision",
-      type: "pipeline",
-      position: { x: 580, y: 320 },
-      data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: Tags, category: "labeling", status: "idle" },
-    },
-    {
-      id: "conditional",
-      type: "pipeline",
-      position: { x: 580, y: 450 },
-      data: { label: "Conditional", description: "confidence > 0.8 → TrOCR, else → Weak Supervision", icon: GitFork, category: "data", status: "active" },
-    },
-    {
-      id: "append-column",
-      type: "pipeline",
-      position: { x: 880, y: 420 },
-      data: { label: "Append Column", description: "Add predicted_label to dataset", icon: TableProperties, category: "data", status: "idle" },
-    },
-    {
-      id: "ml-backend",
-      type: "pipeline",
-      position: { x: 1060, y: 140 },
-      data: { label: "ML Backend", description: "Fine-tune, GPU A100", icon: Zap, category: "ml", status: "idle" },
-    },
-    {
-      id: "ai-judge",
-      type: "pipeline",
-      position: { x: 1060, y: 280 },
-      data: { label: "AI Judge", description: "GPT-4o, threshold 0.85", icon: Bot, category: "evaluation", status: "idle" },
-    },
-    {
-      id: "eval-metrics",
-      type: "pipeline",
-      position: { x: 1340, y: 140 },
-      data: { label: "Evaluation Metrics", description: "Precision, recall, F1", icon: BarChart3, category: "evaluation", status: "idle" },
-    },
-    {
-      id: "export",
-      type: "pipeline",
-      position: { x: 1340, y: 280 },
-      data: { label: "Export Pipeline", description: "Arrow IPC / COCO / ALTO XML", icon: FileOutput, category: "output", status: "idle" },
-    },
+    // Col 1 — Data
+    { id: "dataset", type: "pipeline", position: { x: 0, y: 100 },
+      data: { label: "Dataset", description: "mock-dataset-001 (120 pages)", icon: Database, category: "data", status: "active" } },
+
+    // Col 2 — Sampling
+    { id: "stratified", type: "pipeline", position: { x: 300, y: 0 },
+      data: { label: "Stratified Sampler", description: "Balance by doc_type & status", icon: BarChart3, category: "sampling", status: "active" } },
+    { id: "active-learning", type: "pipeline", position: { x: 300, y: 100 },
+      data: { label: "Active Learning", description: "Uncertainty sampling, batch=20", icon: Target, category: "sampling", status: "idle" } },
+    { id: "random-sample", type: "pipeline", position: { x: 300, y: 200 },
+      data: { label: "Random Sample", description: "n=50, seed=42", icon: Shuffle, category: "sampling", status: "idle" } },
+
+    // Col 3 — Labeling
+    { id: "ai-labeler-trocr", type: "pipeline", position: { x: 600, y: 0 },
+      data: { label: "AI Labeler: TrOCR", description: "trocr-v2-riksarkivet", icon: Sparkles, category: "labeling", status: "running" } },
+    { id: "ai-labeler-layout", type: "pipeline", position: { x: 600, y: 100 },
+      data: { label: "AI Labeler: Layout", description: "dit-base, layout analysis", icon: BrainCircuit, category: "labeling", status: "active" } },
+    { id: "weak-supervision", type: "pipeline", position: { x: 600, y: 200 },
+      data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: Tags, category: "labeling", status: "idle" } },
+
+    // Col 4 — Post-process + Eval
+    { id: "append-column", type: "pipeline", position: { x: 900, y: 0 },
+      data: { label: "Append Column", description: "Add predicted_label to dataset", icon: TableProperties, category: "data", status: "idle" } },
+    { id: "ml-backend", type: "pipeline", position: { x: 900, y: 100 },
+      data: { label: "ML Backend", description: "Fine-tune, GPU A100", icon: Zap, category: "ml", status: "idle" } },
+    { id: "ai-judge", type: "pipeline", position: { x: 900, y: 200 },
+      data: { label: "AI Judge", description: "GPT-4o, threshold 0.85", icon: Bot, category: "evaluation", status: "idle" } },
+
+    // Col 5 — Output
+    { id: "eval-metrics", type: "pipeline", position: { x: 1200, y: 0 },
+      data: { label: "Eval Metrics", description: "Precision, recall, F1", icon: BarChart3, category: "evaluation", status: "idle" } },
+    { id: "export", type: "pipeline", position: { x: 1200, y: 100 },
+      data: { label: "Export", description: "Arrow IPC / COCO / ALTO XML", icon: FileOutput, category: "output", status: "idle" } },
   ]);
 
   const defaultEdgeOptions = {
@@ -222,28 +177,23 @@
   };
 
   let edges = $state.raw<Edge[]>([
-    { id: "e-ds-al", source: "dataset", target: "active-learning" },
+    // Dataset → Samplers
     { id: "e-ds-st", source: "dataset", target: "stratified" },
+    { id: "e-ds-al", source: "dataset", target: "active-learning" },
     { id: "e-ds-rs", source: "dataset", target: "random-sample" },
-    { id: "e-al-trocr", source: "active-learning", target: "ai-labeler-trocr" },
-    { id: "e-st-layout", source: "stratified", target: "ai-labeler-layout" },
+    // Samplers → Labelers
+    { id: "e-st-trocr", source: "stratified", target: "ai-labeler-trocr" },
+    { id: "e-al-layout", source: "active-learning", target: "ai-labeler-layout" },
     { id: "e-rs-ws", source: "random-sample", target: "weak-supervision" },
-    { id: "e-trocr-ml", source: "ai-labeler-trocr", target: "ml-backend" },
+    // Labelers → Post-process
+    { id: "e-trocr-append", source: "ai-labeler-trocr", target: "append-column" },
     { id: "e-layout-ml", source: "ai-labeler-layout", target: "ml-backend" },
     { id: "e-ws-judge", source: "weak-supervision", target: "ai-judge" },
-    { id: "e-trocr-judge", source: "ai-labeler-trocr", target: "ai-judge" },
+    // Post-process → Output
+    { id: "e-append-eval", source: "append-column", target: "eval-metrics" },
     { id: "e-ml-eval", source: "ml-backend", target: "eval-metrics" },
-    { id: "e-judge-eval", source: "ai-judge", target: "eval-metrics" },
     { id: "e-judge-export", source: "ai-judge", target: "export" },
     { id: "e-eval-export", source: "eval-metrics", target: "export" },
-    // Conditional routing
-    { id: "e-st-cond", source: "stratified", target: "conditional" },
-    { id: "e-cond-trocr", source: "conditional", target: "ai-labeler-trocr" },
-    { id: "e-cond-ws", source: "conditional", target: "weak-supervision" },
-    // Append column back to dataset
-    { id: "e-trocr-append", source: "ai-labeler-trocr", target: "append-column" },
-    { id: "e-layout-append", source: "ai-labeler-layout", target: "append-column" },
-    { id: "e-append-ds", source: "append-column", target: "dataset" },
   ]);
 
   function onconnect(event: { source: string; target: string }) {
