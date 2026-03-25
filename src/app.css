@@ -183,6 +183,15 @@
 /* Subtle dot-grid background for the Pixi canvas */
 .pixi-grid {
   background-color: var(--background);
-  background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
-  background-size: 20px 20px;
+  background-image: radial-gradient(circle, var(--muted-foreground) 0.6px, transparent 0.6px);
+  background-size: 24px 24px;
+  opacity: 1;
+}
+
+:root .pixi-grid {
+  background-image: radial-gradient(circle, oklch(0.55 0 0 / 0.25) 0.6px, transparent 0.6px);
+}
+
+.dark .pixi-grid {
+  background-image: radial-gradient(circle, oklch(0.65 0 0 / 0.2) 0.6px, transparent 0.6px);
 }
