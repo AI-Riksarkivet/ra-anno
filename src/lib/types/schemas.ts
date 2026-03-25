@@ -39,4 +39,7 @@ export const PAGE_COLUMNS = [
   "image_mime", // Utf8 — MIME type for the image
   "image_width",
   "image_height",
+  "embedding", // FixedSizeList<Float32> — high-dimensional embedding vector
+  "umap_x", // Float32 — 2D UMAP projection X
+  "umap_y", // Float32 — 2D UMAP projection Y
 ] as const;

@@ -19,6 +19,26 @@ const LABELS = [
   "signature",
 ];
 const GROUPS = ["line", "block", "marginalia", "header", "uncategorized"];
+const DOC_TYPES = ["handwritten", "printed", "map", "form"];
+
+// UMAP cluster centers by doc_type
+const DOC_TYPE_CENTERS: Record<string, [number, number]> = {
+  handwritten: [-4, 3],
+  printed: [4, -2],
+  map: [-2, -4],
+  form: [3, 4],
+};
+
+const LABEL_SUB_OFFSETS: Record<string, [number, number]> = {
+  "text-line": [0.3, -0.2],
+  paragraph: [-0.4, 0.3],
+  header: [0.1, 0.5],
+  "marginal-note": [-0.5, -0.1],
+  "page-number": [0.2, -0.4],
+  signature: [-0.1, 0.6],
+};
+
+const EMBEDDING_DIM = 128;
 
 // Ensure output directory exists
 try {
@@ -252,6 +272,23 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
   const pageSvg = generatePageSvg(pageId, docId, pageNum, p * 12345 + 67890);
   const pageSvgBytes = new TextEncoder().encode(pageSvg);
 
+  // Generate embedding and UMAP coordinates for this page
+  const docType = DOC_TYPES[(docIndex - 1) % DOC_TYPES.length];
+  const pageLabel = LABELS[p % LABELS.length];
+  const [cx, cy] = DOC_TYPE_CENTERS[docType] ?? [0, 0];
+  const [lx, ly] = LABEL_SUB_OFFSETS[pageLabel] ?? [0, 0];
+  const umapAngle = p * 2.399; // golden angle
+  const umapR = 0.3 + (((p * 7 + 13) % 20) / 20) * 1.2;
+  const umapX = cx + lx + umapR * Math.cos(umapAngle);
+  const umapY = cy + ly + umapR * Math.sin(umapAngle);
+
+  // Generate a deterministic mock embedding vector
+  const embeddingRng = seededRandom(p * 31337);
+  const embedding = new Float32Array(EMBEDDING_DIM);
+  for (let d = 0; d < EMBEDDING_DIM; d++) {
+    embedding[d] = (embeddingRng() - 0.5) * 2;
+  }
+
   // Page table with Binary image column
   const imageVector = vectorFromArray([pageSvgBytes], new Binary());
   const thumbVector = vectorFromArray([pageSvgBytes], new Binary());
@@ -263,6 +300,9 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     image_mime: ["image/svg+xml"],
     image_width: new Int32Array([800]),
     image_height: new Int32Array([1100]),
+    embedding: [Array.from(embedding)],
+    umap_x: new Float32Array([umapX]),
+    umap_y: new Float32Array([umapY]),
   });
   const pageTable = new Table({
     page_id: scalarTable.getChild("page_id")!,
@@ -274,6 +314,9 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     image_mime: scalarTable.getChild("image_mime")!,
     image_width: scalarTable.getChild("image_width")!,
     image_height: scalarTable.getChild("image_height")!,
+    embedding: scalarTable.getChild("embedding")!,
+    umap_x: scalarTable.getChild("umap_x")!,
+    umap_y: scalarTable.getChild("umap_y")!,
   });
   await Deno.writeFile(
     `static/mock/${pageId}.page.arrow`,
