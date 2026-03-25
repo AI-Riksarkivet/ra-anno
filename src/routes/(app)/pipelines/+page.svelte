@@ -320,8 +320,8 @@
       class="bg-background"
     >
       <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-      <Controls showLock={false} position="bottom-right" />
-      <MiniMap position="bottom-right" class="!bottom-12" />
+      <Controls showLock={false} position="bottom-left" />
+      <MiniMap position="bottom-right" />
 
       <!-- Stats bar -->
       <Panel position="top-left" class="!top-2 !left-2">
