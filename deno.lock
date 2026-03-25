@@ -14,11 +14,13 @@
     "npm:bits-ui@^2.16.3": "2.16.3_@internationalized+date@3.12.0_svelte@5.54.1_@sveltejs+kit@2.55.0__@sveltejs+vite-plugin-svelte@5.1.1___svelte@5.54.1___vite@6.4.1__svelte@5.54.1__typescript@5.9.3__vite@6.4.1",
     "npm:clsx@2": "2.1.1",
     "npm:flatbush@^4.5.0": "4.5.1",
+    "npm:motion-sv@~0.1.10": "0.1.10_svelte@5.54.1",
     "npm:paneforge@^1.0.2": "1.0.2_svelte@5.54.1",
     "npm:pixi.js@^8.17.0": "8.17.1",
     "npm:prettier-plugin-svelte@^3.5.0": "3.5.1_prettier@3.8.1_svelte@5.54.1",
     "npm:prettier@*": "3.8.1",
     "npm:prettier@3": "3.8.1",
+    "npm:runed@0.23": "0.23.4_svelte@5.54.1",
     "npm:shadcn-svelte@latest": "1.1.1",
     "npm:shadcn-svelte@next": "1.0.0-next.19",
     "npm:svelte-check@*": "4.4.5_svelte@5.54.1_typescript@5.9.3",
@@ -721,6 +723,9 @@
     "cookie@0.6.0": {
       "integrity": "sha512-U71cyTamuh1CRNCfpGY6to28lxvNwPG4Guz/EVjgf3Jmzv0vlDp1atT9eS5dDjMYHucpHbWns6Lwf3BKz6svdw=="
     },
+    "csstype@3.2.3": {
+      "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="
+    },
     "d3-color@3.1.0": {
       "integrity": "sha512-zg/chbXyeBtMQ1LbD/WSoW2DpC3I0mpmPdW+ynRTj/x2DAWYrIY7qeZIHidozwV24m4iavr15lNwIwLxRmOxhA=="
     },
@@ -868,6 +873,14 @@
     "flatqueue@3.0.0": {
       "integrity": "sha512-y1deYaVt+lIc/d2uIcWDNd0CrdQTO5xoCjeFdhX0kSXvm2Acm0o+3bAOiYklTEoRyzwio3sv3/IiBZdusbAe2Q=="
     },
+    "framer-motion@12.38.0": {
+      "integrity": "sha512-rFYkY/pigbcswl1XQSb7q424kSTQ8q6eAC+YUsSKooHQYuLdzdHjrt6uxUC+PRAO++q5IS7+TamgIw1AphxR+g==",
+      "dependencies": [
+        "motion-dom",
+        "motion-utils",
+        "tslib"
+      ]
+    },
     "fsevents@2.3.3": {
       "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
       "os": ["darwin"],
@@ -884,6 +897,9 @@
     },
     "has-flag@4.0.0": {
       "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ=="
+    },
+    "hey-listen@1.0.8": {
+      "integrity": "sha512-COpmrF2NOg4TBWUJ5UVyaCU2A88wEMkUPK4hNqyCkqHbxT92BbvfjoSozkAIIm6XhicGlJHhFdullInrdhwU8Q=="
     },
     "inline-style-parser@0.2.7": {
       "integrity": "sha512-Nb2ctOyNR8DqQoR0OwRG95uNWIC0C1lCgf5Naz5H6Ji72KZ8OcFZLz2P5sNgwlyoJ8Yif11oMuYs5pBQa86csA=="
@@ -999,6 +1015,26 @@
       "dependencies": [
         "@jridgewell/sourcemap-codec"
       ]
+    },
+    "motion-dom@12.38.0": {
+      "integrity": "sha512-pdkHLD8QYRp8VfiNLb8xIBJis1byQ9gPT3Jnh2jqfFtAsWUA3dEepDlsWe/xMpO8McV+VdpKVcp+E+TGJEtOoA==",
+      "dependencies": [
+        "motion-utils"
+      ]
+    },
+    "motion-sv@0.1.10_svelte@5.54.1": {
+      "integrity": "sha512-XGdIOaQV9EjCK8okdPqMZA/zikCqXwqX/efH1EVl7xw8KqklzvTn6ZJ0iddwAjVvWkrMD/Qz1VaK42VBPUvzog==",
+      "dependencies": [
+        "csstype",
+        "framer-motion",
+        "hey-listen",
+        "motion-dom",
+        "motion-utils",
+        "svelte"
+      ]
+    },
+    "motion-utils@12.36.0": {
+      "integrity": "sha512-eHWisygbiwVvf6PZ1vhaHCLamvkSbPIeAYxWUuL3a2PD/TROgE7FvfHWTIH4vMl798QLfMw15nRqIaRDXTlYRg=="
     },
     "mri@1.2.0": {
       "integrity": "sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA=="
@@ -1347,10 +1383,12 @@
         "npm:bits-ui@^2.16.3",
         "npm:clsx@2",
         "npm:flatbush@^4.5.0",
+        "npm:motion-sv@~0.1.10",
         "npm:paneforge@^1.0.2",
         "npm:pixi.js@^8.17.0",
         "npm:prettier-plugin-svelte@^3.5.0",
         "npm:prettier@3",
+        "npm:runed@0.23",
         "npm:svelte-check@4",
         "npm:svelte@5",
         "npm:tailwind-merge@3",

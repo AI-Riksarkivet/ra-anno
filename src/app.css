@@ -33,6 +33,12 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --animate-gradient: gradient 8s linear infinite;
+  --animate-blink-cursor: blink-cursor 1s step-end infinite;
+
+  @keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
 	@keyframes gradient {
 		to {
 			background-position: var(--bg-size, 300%) 0;

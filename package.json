@@ -27,6 +27,8 @@
     "apache-arrow": "^21.1.0",
     "@xyflow/svelte": "^1.0.0",
     "flatbush": "^4.5.0",
+    "motion-sv": "^0.1.10",
+    "runed": "^0.23.0",
     "valibot": "^1.0.0",
     "pixi.js": "^8.17.0"
   }

@@ -215,7 +215,7 @@
 <div class="flex h-full">
   <!-- Left sidebar: project config + node palette -->
   <div class="flex h-full w-64 flex-col border-r bg-background">
-    <!-- Project config -->
+    <!-- Project config + actions -->
     <div class="border-b p-3">
       <span class="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Project</span>
       <input
@@ -223,7 +223,7 @@
         class="mb-2 w-full rounded-md border border-border bg-background px-2 py-1 text-xs font-medium focus:border-primary focus:outline-none"
         bind:value={projectName}
       />
-      <div class="flex items-center gap-1.5 rounded-md border border-border px-2 py-1">
+      <div class="mb-3 flex items-center gap-1.5 rounded-md border border-border px-2 py-1">
         <Database class="h-3 w-3 text-muted-foreground" />
         <select
           class="flex-1 bg-transparent text-xs focus:outline-none"
@@ -233,6 +233,24 @@
           <option value="riksarkivet-htr">riksarkivet-htr</option>
           <option value="census-1900">census-1900</option>
         </select>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <Button variant="default" size="sm" class="w-full justify-start gap-2 text-xs" disabled>
+          <Play class="h-3.5 w-3.5" />
+          <AnimatedGradientText colorFrom="#22c55e" colorTo="#3b82f6" speed={0.6} class="text-xs font-medium">
+            Run Pipeline
+          </AnimatedGradientText>
+        </Button>
+        <div class="flex gap-1.5">
+          <Button variant="outline" size="sm" class="flex-1 justify-start gap-1.5 text-xs" disabled>
+            <Save class="h-3 w-3" />
+            Save
+          </Button>
+          <Button variant="outline" size="sm" class="flex-1 justify-start gap-1.5 text-xs" disabled>
+            <FolderOpen class="h-3 w-3" />
+            Load
+          </Button>
+        </div>
       </div>
     </div>
 
@@ -271,25 +289,6 @@
       </div>
     </div>
 
-    <Separator />
-
-    <!-- Actions -->
-    <div class="flex flex-col gap-1.5 p-3">
-      <Button variant="outline" size="sm" class="w-full justify-start gap-2 text-xs" disabled>
-        <Play class="h-3.5 w-3.5" />
-        <AnimatedGradientText colorFrom="#22c55e" colorTo="#3b82f6" speed={0.6} class="text-xs font-medium">
-          Run Pipeline
-        </AnimatedGradientText>
-      </Button>
-      <Button variant="outline" size="sm" class="w-full justify-start gap-2 text-xs" disabled>
-        <Save class="h-3.5 w-3.5" />
-        Save Pipeline
-      </Button>
-      <Button variant="outline" size="sm" class="w-full justify-start gap-2 text-xs" disabled>
-        <FolderOpen class="h-3.5 w-3.5" />
-        Load Pipeline
-      </Button>
-    </div>
   </div>
 
   <!-- Flow canvas -->
