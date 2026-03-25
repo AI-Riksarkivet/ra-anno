@@ -316,6 +316,7 @@
       {defaultEdgeOptions}
       {onconnect}
       fitView
+      proOptions={{ hideAttribution: true }}
       class="bg-background"
     >
       <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
