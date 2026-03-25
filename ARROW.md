@@ -98,16 +98,6 @@ getFieldValue(pageId, rowIndex, field):
 ### Field Edit (label, text, status change)
 
 ```
-Current (SLOW):
-  updateLocal(pageId, 7, { label: "paragraph" })
-    → fieldOverrides.set(7, "label", "paragraph")        ← O(1)
-    → rematerialize()                                     ← O(N × columns) COPY
-      → iterates ALL rows × ALL columns
-      → col.get(i) for every cell
-      → tableFromArrays(cols) — copies everything
-      → new Arrow Table
-
-Should be (FAST):
   updateLocal(pageId, 7, { label: "paragraph" })
     → fieldOverrides.set(7, "label", "paragraph")        ← O(1)
     → bumpFieldVersion()                                  ← O(1)
@@ -169,8 +159,7 @@ save(pageId)
 | Append/delete | 0.5ms | 12ms | 120ms |
 | Save (3 rows delta) | 1ms | 1ms | 1ms |
 
-**Current bottleneck**: `rematerialize()` runs on every field edit = O(N × columns).
-**Fix**: Remove `rematerialize()` from field edits, use `getFieldValue()` for reads.
+**Resolved**: Field edits no longer call `rematerialize()` — sidebar reads via `getFieldValue()` with overlay check. `rematerialize()` only runs on structural changes (append/delete) and just-in-time before `save()`.
 
 ## Store API
 

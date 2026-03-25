@@ -11,7 +11,7 @@
   import type { Table } from "apache-arrow";
   import { statusColor, colorToHex } from "$lib/utils/color.js";
   import type { AnnotationStatus } from "$lib/types/schemas.js";
-  import { uniqueColumnValues } from "$lib/utils/arrow.js";
+  import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { getContext } from "svelte";
   import { type LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import LayerPanel from "./LayerPanel.svelte";
@@ -30,6 +30,7 @@
 
   let {
     table = null,
+    pageId = "",
     selectedIndex = null,
     selectedSet = new Set<number>() as ReadonlySet<number>,
     mode = "edit",
@@ -41,6 +42,7 @@
     onDelete,
   }: {
     table?: Table | null;
+    pageId?: string;
     selectedIndex?: number | null;
     selectedSet?: ReadonlySet<number>;
     mode?: "view" | "edit";
@@ -66,7 +68,7 @@
     if (!table) return null;
     const row: Record<string, unknown> = {};
     for (const field of table.schema.fields) {
-      row[field.name] = table.getChild(field.name)?.get(index);
+      row[field.name] = annotationStore.getFieldValue(pageId, index, field.name);
     }
     return row;
   }
@@ -75,17 +77,31 @@
     selectedIndex !== null ? getRow(selectedIndex) : null,
   );
 
-  const uniqueLabels = $derived(table ? uniqueColumnValues(table, "label") : []);
-  const uniqueGroups = $derived(table ? uniqueColumnValues(table, "group") : []);
+  const uniqueLabels = $derived.by(() => {
+    if (!table) return [];
+    const set = new Set<string>();
+    for (let i = 0; i < table.numRows; i++) {
+      const v = annotationStore.getFieldValue(pageId, i, "label");
+      if (v) set.add(String(v));
+    }
+    return [...set].sort();
+  });
+  const uniqueGroups = $derived.by(() => {
+    if (!table) return [];
+    const set = new Set<string>();
+    for (let i = 0; i < table.numRows; i++) {
+      const v = annotationStore.getFieldValue(pageId, i, "group");
+      if (v) set.add(String(v));
+    }
+    return [...set].sort();
+  });
 
   /** Status counts for the summary bar */
   const statusCounts = $derived.by(() => {
     if (!table) return {};
-    const col = table.getChild("status");
-    if (!col) return {};
     const counts: Record<string, number> = {};
     for (let i = 0; i < table.numRows; i++) {
-      const s = String(col.get(i) ?? "draft");
+      const s = String(annotationStore.getFieldValue(pageId, i, "status") ?? "draft");
       counts[s] = (counts[s] ?? 0) + 1;
     }
     return counts;
@@ -107,18 +123,14 @@
   const groupedAnnotations = $derived.by(() => {
     if (!table || table.numRows === 0) return [];
     const groupByCol = layers?.groupByColumn ?? "label";
-    const col = table.getChild(groupByCol);
-    const textCol = table.getChild("text");
-    const labelCol = table.getChild("label");
-    const statusCol = table.getChild("status");
     const filter = filterText.toLowerCase();
 
     const groups = new Map<string, { index: number; label: string; text: string; status: string }[]>();
     for (let i = 0; i < table.numRows; i++) {
-      const groupVal = String(col?.get(i) ?? "ungrouped");
-      const label = String(labelCol?.get(i) ?? "");
-      const text = String(textCol?.get(i) ?? "");
-      const status = String(statusCol?.get(i) ?? "draft");
+      const groupVal = String(annotationStore.getFieldValue(pageId, i, groupByCol) ?? "ungrouped");
+      const label = String(annotationStore.getFieldValue(pageId, i, "label") ?? "");
+      const text = String(annotationStore.getFieldValue(pageId, i, "text") ?? "");
+      const status = String(annotationStore.getFieldValue(pageId, i, "status") ?? "draft");
 
       // Filter by search text
       if (filter && !label.toLowerCase().includes(filter) && !text.toLowerCase().includes(filter)) {
@@ -225,7 +237,7 @@
   {/if}
 
   <!-- Layer panel -->
-  <LayerPanel {table} />
+  <LayerPanel {table} {pageId} />
 
   <!-- Status summary bar -->
   {#if table && table.numRows > 0}

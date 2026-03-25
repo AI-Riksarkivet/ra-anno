@@ -427,6 +427,7 @@
   <!-- Right: annotation sidebar (fixed width) -->
   <AnnotationSidebar
     {table}
+    {pageId}
     {selectedIndex}
     {selectedSet}
     {mode}

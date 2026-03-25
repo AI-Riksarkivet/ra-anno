@@ -167,19 +167,28 @@ class AnnotationStore {
   /** Read a field value — checks overlay first, falls back to server table.
    *  O(1) per call, no table rebuild needed. */
   getFieldValue(pageId: string, rowIndex: number, field: string): unknown {
-    // Check field overlay
+    // Check field overlay — O(1)
     const override = this._fieldOverrides[pageId]?.get(rowIndex)?.get(field);
     if (override !== undefined) return override;
 
-    // Check if this is an appended row
     const base = this._serverTables[pageId];
     if (!base) return null;
-    const deleted = this._deletedIndices[pageId] ?? new Set();
+    const deleted = this._deletedIndices[pageId];
     const appended = this._appendedRows[pageId] ?? [];
 
-    // Map materialized index to base/appended
-    // Materialized rows = base rows (minus deleted) + appended rows
-    let baseIdx = 0;
+    // Fast path: no deletions — materialized index maps directly to base/appended
+    if (!deleted || deleted.size === 0) {
+      if (rowIndex < base.numRows) {
+        return base.getChild(field)?.get(rowIndex);
+      }
+      const appendedIdx = rowIndex - base.numRows;
+      if (appendedIdx >= 0 && appendedIdx < appended.length) {
+        return appended[appendedIdx][field] ?? null;
+      }
+      return null;
+    }
+
+    // Slow path: has deletions — walk base to find materialized index
     let matIdx = 0;
     for (let i = 0; i < base.numRows; i++) {
       if (deleted.has(i)) continue;
@@ -188,7 +197,6 @@ class AnnotationStore {
       }
       matIdx++;
     }
-    // Must be an appended row
     const appendedIdx = rowIndex - matIdx;
     if (appendedIdx >= 0 && appendedIdx < appended.length) {
       return appended[appendedIdx][field] ?? null;
@@ -250,6 +258,11 @@ class AnnotationStore {
       ...this._structuralVersion,
       [pageId]: v + 1,
     };
+  }
+
+  private bumpFieldVersion(pageId: string): void {
+    const v = this._fieldVersion[pageId] ?? 0;
+    this._fieldVersion = { ...this._fieldVersion, [pageId]: v + 1 };
   }
 
   private rematerialize(pageId: string): void {
@@ -412,8 +425,10 @@ class AnnotationStore {
       row.set(k, v);
     }
     this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
-    this.rematerialize(pageId); // sidebar needs updated table
+    this._dirty = { ...this._dirty, [pageId]: true };
+    this.bumpFieldVersion(pageId);
     // NOTE: no bumpStructural — Pixi uses setFieldOverride for rendering changes
+    // NOTE: no rematerialize — sidebar reads via getFieldValue() for O(1) field access
   }
 
   /** Batch field edit — same as updateLocal but for multiple rows */
@@ -435,8 +450,10 @@ class AnnotationStore {
       }
     }
     this._fieldOverrides = { ...this._fieldOverrides, [pageId]: fields };
-    this.rematerialize(pageId);
+    this._dirty = { ...this._dirty, [pageId]: true };
+    this.bumpFieldVersion(pageId);
     // NOTE: no bumpStructural
+    // NOTE: no rematerialize — sidebar reads via getFieldValue() for O(1) field access
   }
 
   /** Append row — structural change, bumps version */
@@ -528,6 +545,9 @@ class AnnotationStore {
   async save(pageId: string): Promise<Table> {
     const base = this._serverTables[pageId];
     if (!base) throw new Error("No table to save");
+
+    // Rebuild materialized table to reflect all field overlays before delta extraction
+    this.rematerialize(pageId);
 
     const { fields, appended, deleted, deletedIds } = this.getOverlays(pageId);
     const dirtyBaseIndices = [...fields.keys()].filter(

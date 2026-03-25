@@ -21,7 +21,9 @@
 
   const ctxStore = getContext<LayerStore>(LAYER_CTX);
 
-  let { table = null, store = ctxStore }: { table?: Table | null; store?: LayerStore } = $props();
+  import { annotationStore } from "$lib/stores/annotations.svelte.js";
+
+  let { table = null, pageId = "", store = ctxStore }: { table?: Table | null; pageId?: string; store?: LayerStore } = $props();
 
   let collapsed = $state(false);
 
@@ -34,11 +36,9 @@
 
   const groups = $derived.by(() => {
     if (!table || table.numRows === 0) return [];
-    const col = table.getChild(store.groupByColumn);
-    if (!col) return [];
     const counts: Record<string, number> = {};
     for (let i = 0; i < table.numRows; i++) {
-      const val = String(col.get(i) ?? "unknown");
+      const val = String(annotationStore.getFieldValue(pageId, i, store.groupByColumn) ?? "unknown");
       counts[val] = (counts[val] ?? 0) + 1;
     }
     return Object.entries(counts)
