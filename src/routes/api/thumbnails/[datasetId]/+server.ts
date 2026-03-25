@@ -4,10 +4,10 @@ import type { RequestHandler } from "./$types";
 const COLUMNS = [
   { name: "page_id", type: "string" },
   { name: "doc_id", type: "string" },
-  { name: "page_num", type: "number" },
-  { name: "width", type: "number" },
-  { name: "height", type: "number" },
-  { name: "annotation_count", type: "number" },
+  { name: "page_num", type: "number", min: 1, max: 24 },
+  { name: "width", type: "number", min: 600, max: 1000 },
+  { name: "height", type: "number", min: 800, max: 1400 },
+  { name: "annotation_count", type: "number", min: 20, max: 80 },
   {
     name: "status",
     type: "enum",
@@ -81,8 +81,8 @@ const MOCK_PAGES = Array.from({ length: 120 }, (_, i) => {
     page_id: `mock-page-${String(i + 1).padStart(3, "0")}`,
     doc_id: `doc-${docIndex + 1}`,
     page_num: (i % PAGES_PER_DOC) + 1,
-    width: 800,
-    height: 1100,
+    width: 600 + ((i * 37 + 11) % 401),  // 600–1000
+    height: 800 + ((i * 53 + 7) % 601),  // 800–1400
     annotation_count: 20 + ((i * 7 + 13) % 61), // deterministic, matches generate-mock-data.ts
     status: statuses[i % statuses.length],
     label: labels[i % labels.length],
@@ -101,9 +101,19 @@ export const GET: RequestHandler = ({ url }) => {
 
   // Collect all filter params — supports comma-separated multi-select
   const filters: Record<string, string[]> = {};
+  const rangeFilters: Record<string, { min?: number; max?: number }> = {};
   for (const col of COLUMNS) {
     const val = url.searchParams.get(col.name);
     if (val) filters[col.name] = val.split(",");
+    // Range filters: col_min=N&col_max=N
+    const minVal = url.searchParams.get(`${col.name}_min`);
+    const maxVal = url.searchParams.get(`${col.name}_max`);
+    if (minVal || maxVal) {
+      rangeFilters[col.name] = {
+        min: minVal ? Number(minVal) : undefined,
+        max: maxVal ? Number(maxVal) : undefined,
+      };
+    }
   }
 
   // Scatter plot selection filter — comma-separated page_ids
@@ -132,6 +142,17 @@ export const GET: RequestHandler = ({ url }) => {
       const v = p[key as keyof typeof p];
       if (typeof v === "number") return vals.some((val) => v === Number(val));
       return vals.includes(String(v));
+    });
+  }
+
+  // Apply range filters
+  for (const [key, range] of Object.entries(rangeFilters)) {
+    pages = pages.filter((p) => {
+      const v = p[key as keyof typeof p];
+      if (typeof v !== "number") return true;
+      if (range.min !== undefined && v < range.min) return false;
+      if (range.max !== undefined && v > range.max) return false;
+      return true;
     });
   }
 

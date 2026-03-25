@@ -27,6 +27,7 @@
     "npm:tailwind-variants@^3.2.2": "3.2.2_tailwind-merge@3.0.2_tailwindcss@4.2.2",
     "npm:tailwindcss@4": "4.2.2",
     "npm:typescript@5": "5.9.3",
+    "npm:valibot@1": "1.2.0_typescript@5.9.3",
     "npm:vite@*": "6.4.1",
     "npm:vite@6": "6.4.1"
   },
@@ -1182,6 +1183,15 @@
     "urlpattern-polyfill@10.1.0": {
       "integrity": "sha512-IGjKp/o0NL3Bso1PymYURCJxMPNAf/ILOpendP9f5B6e1rTJgdgiOvgfoT8VxCAdY+Wisb9uhGaJJf3yZ2V9nw=="
     },
+    "valibot@1.2.0_typescript@5.9.3": {
+      "integrity": "sha512-mm1rxUsmOxzrwnX5arGS+U4T25RdvpPjPN4yR0u9pUBov9+zGVtO84tif1eY4r6zWxVxu3KzIyknJy3rxfRZZg==",
+      "dependencies": [
+        "typescript"
+      ],
+      "optionalPeers": [
+        "typescript"
+      ]
+    },
     "vite@6.4.1": {
       "integrity": "sha512-+Oxm7q9hDoLMyJOYfUYBuHQo+dkAloi33apOPP56pzj+vsdJDzr+j1NISE5pyaAuKL4A3UD34qd0lx5+kfKp2g==",
       "dependencies": [
@@ -1237,6 +1247,7 @@
         "npm:tailwind-variants@^3.2.2",
         "npm:tailwindcss@4",
         "npm:typescript@5",
+        "npm:valibot@1",
         "npm:vite@6"
       ]
     }
