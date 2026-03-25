@@ -116,16 +116,14 @@
     title={mode === "view" ? "Switch to Edit mode" : "Switch to View mode"}
     onclick={() => onToggleMode?.()}
   >
-    <div class="flex h-8 w-8 items-center justify-center rounded-md ring-2 transition-all duration-200 {mode === 'edit' ? 'bg-primary text-primary-foreground ring-primary/50 shadow-[0_0_10px_2px] shadow-primary/40' : 'bg-muted text-muted-foreground ring-muted-foreground/20 hover:bg-accent'}">
+    <div class="flex h-8 w-8 items-center justify-center rounded-md border border-primary/20 transition-all duration-300 {mode === 'edit' ? 'bg-primary text-primary-foreground shadow-[0_0_12px_3px] shadow-primary/50' : 'bg-primary/10 text-primary/50'}">
       {#if mode === "edit"}
-        <AnimatedShinyText shimmerWidth={50} class="flex items-center text-primary-foreground">
-          <Pencil class="h-4 w-4" />
-        </AnimatedShinyText>
+        <Pencil class="h-4 w-4" />
       {:else}
         <Eye class="h-4 w-4" />
       {/if}
     </div>
-    <span class="text-[8px] font-medium uppercase {mode === 'edit' ? 'text-primary' : 'text-muted-foreground'}">{mode === "edit" ? "Edit" : "View"}</span>
+    <span class="text-[8px] font-medium uppercase {mode === 'edit' ? 'text-primary' : 'text-primary/40'}">{mode === "edit" ? "Edit" : "View"}</span>
   </button>
 
   <Separator class="mb-2 w-6" />
