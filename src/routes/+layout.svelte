@@ -105,6 +105,14 @@
         </a>
         <Separator class="my-1" />
         <a
+          href="/pipelines"
+          class="flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm hover:bg-accent"
+          onclick={() => (menuOpen = false)}
+        >
+          Pipelines
+        </a>
+        <Separator class="my-1" />
+        <a
           href="/test"
           class="flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent"
           onclick={() => (menuOpen = false)}

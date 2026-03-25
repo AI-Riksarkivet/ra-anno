@@ -73,7 +73,7 @@
   // View mode
   let viewMode = $state<"grid" | "table">("grid");
   let gridSize = $state(3); // 1=large, 2=medium, 3=default, 4=small, 5=tiny
-  let showCardLabels = $state(true);
+  let showCardLabels = $state(false);
   let showCardBadges = $state(false);
 
   // Pop-out embeddings window
@@ -737,16 +737,20 @@
     <!-- Compact top bar -->
     <div class="flex items-center gap-2 border-b px-4 py-1.5">
       {#if bulkMode}
-        <!-- Select all checkbox (only in bulk mode) -->
+        <!-- Select all (only in bulk mode) -->
         <button
-          class="flex h-4 w-4 items-center justify-center rounded border {allCheckedOnPage ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30 hover:border-muted-foreground/60'}"
+          class="flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs hover:bg-accent {allCheckedOnPage ? 'border-primary bg-primary/10' : 'border-border'}"
           onclick={toggleAllOnPage}
-          title="Select all on this page"
         >
-          {#if allCheckedOnPage}
-            <Check class="h-3 w-3" />
-          {/if}
+          <span class="flex h-3.5 w-3.5 items-center justify-center rounded-sm border {allCheckedOnPage ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'}">
+            {#if allCheckedOnPage}
+              <Check class="h-2.5 w-2.5" />
+            {/if}
+          </span>
+          <span class="text-muted-foreground">{allCheckedOnPage ? "Deselect all" : "Select all"}</span>
         </button>
+
+        <Separator orientation="vertical" class="h-4" />
       {/if}
 
       <span class="text-sm font-medium">{total} pages</span>
@@ -1060,8 +1064,8 @@
   </div>
   </Resizable.Pane>
 
-  <!-- Bulk label right panel — shows when in bulk mode with items checked -->
-  {#if bulkMode && checkedCount > 0}
+  <!-- Bulk label right panel — shows when bulk mode is active -->
+  {#if bulkMode}
     <Resizable.Handle />
     <Resizable.Pane defaultSize={22} minSize={15} maxSize={40}>
     <div class="flex h-full flex-col bg-background">
@@ -1075,9 +1079,17 @@
       </div>
 
       <div class="flex-1 overflow-y-auto p-3">
-        <p class="mb-3 text-xs text-muted-foreground">
-          Set values to apply to all {checkedCount} selected pages. Unchanged fields keep their current value.
-        </p>
+        {#if checkedCount === 0}
+          <div class="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+            <Check class="mb-2 h-8 w-8 opacity-20" />
+            <p class="text-xs font-medium">No pages selected</p>
+            <p class="mt-1 text-[10px]">Click pages in the gallery or use "Select all" to choose pages for bulk labeling.</p>
+          </div>
+        {:else}
+          <p class="mb-3 text-xs text-muted-foreground">
+            Set values to apply to all {checkedCount} selected page{checkedCount !== 1 ? 's' : ''}. Unchanged fields keep their current value.
+          </p>
+        {/if}
 
         <!-- Text field (textarea) -->
         <div class="mb-4">
