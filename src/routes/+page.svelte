@@ -66,7 +66,7 @@
 
     <!-- CTA buttons -->
     <div class="mb-12 flex flex-wrap items-center justify-center gap-3">
-      <Button href="/datasets" variant="default" size="default" class="gap-2">
+      <Button href="/datasets" variant="outline" size="default" class="gap-2">
         <Database class="h-4 w-4" />
         Browse Datasets
         <ArrowRight class="h-4 w-4" />
