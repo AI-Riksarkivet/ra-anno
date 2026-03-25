@@ -64,15 +64,17 @@
 
 <!-- Top navbar -->
 <header class="flex h-10 items-center border-b bg-background">
-  <!-- Logo + menu -->
+  <!-- Logo (home link) + menu -->
+  <a href="/" class="flex h-10 items-center gap-2 px-3 text-sm font-semibold tracking-tight hover:bg-muted">
+    <ScanSearch class="h-4 w-4 text-primary" />
+    <span>RA-ANNO</span>
+  </a>
   <div class="relative">
     <button
-      class="flex h-10 items-center gap-2 px-3 text-sm font-semibold tracking-tight hover:bg-muted"
+      class="flex h-10 items-center px-2 text-muted-foreground hover:bg-muted hover:text-foreground"
       onclick={() => (menuOpen = !menuOpen)}
     >
-      <ScanSearch class="h-4 w-4 text-primary" />
-      <span>RA-ANNO</span>
-      <Menu class="h-3 w-3 text-muted-foreground" />
+      <Menu class="h-4 w-4" />
     </button>
 
     {#if menuOpen}
