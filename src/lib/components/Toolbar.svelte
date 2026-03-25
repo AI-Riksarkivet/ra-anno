@@ -2,7 +2,6 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import type { Tool } from "$lib/pixi/types.js";
   import MousePointer2 from "@lucide/svelte/icons/mouse-pointer-2";
@@ -118,7 +117,6 @@
   <!-- Mode toggle -->
   <button
     class="mb-2 flex flex-col items-center gap-0.5"
-    title={mode === "view" ? "Switch to Edit mode" : "Switch to View mode"}
     onclick={() => onToggleMode?.()}
   >
     <div class="flex h-8 w-8 items-center justify-center rounded-md border border-primary/20 transition-all duration-300 {mode === 'edit' ? 'bg-primary text-primary-foreground shadow-[0_0_12px_3px] shadow-primary/50' : 'bg-primary/10 text-primary/50'}">
@@ -135,31 +133,13 @@
 
   <!-- Group: Navigation tools (select, pan, lasso) -->
   <div class="flex flex-col gap-0.5">
-    <Button
-      variant={activeTool === "select" ? "default" : "ghost"}
-      size="sm"
-      class="h-8 w-8 p-0"
-      title="Select (1)"
-      onclick={() => onToolChange?.("select")}
-    >
+    <Button variant={activeTool === "select" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Select (1)" onclick={() => onToolChange?.("select")}>
       <MousePointer2 class="h-4 w-4" />
     </Button>
-    <Button
-      variant={activeTool === "pan" ? "default" : "ghost"}
-      size="sm"
-      class="h-8 w-8 p-0"
-      title="Pan (0)"
-      onclick={() => onToolChange?.("pan")}
-    >
+    <Button variant={activeTool === "pan" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Pan (0)" onclick={() => onToolChange?.("pan")}>
       <Hand class="h-4 w-4" />
     </Button>
-    <Button
-      variant={activeTool === "lasso" ? "default" : "ghost"}
-      size="sm"
-      class="h-8 w-8 p-0"
-      title="Lasso Select (6)"
-      onclick={() => onToolChange?.("lasso")}
-    >
+    <Button variant={activeTool === "lasso" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Lasso Select (6)" onclick={() => onToolChange?.("lasso")}>
       <LassoIcon class="h-4 w-4" />
     </Button>
   </div>
@@ -167,78 +147,33 @@
   {#if mode === "edit"}
     <Separator class="my-2 w-6" />
 
-    <!-- Group: Drawing tools (rect, polygon, scissors, magnetic) -->
+    <!-- Group: Drawing tools -->
     <div class="flex flex-col gap-0.5">
-      <Button
-        variant={activeTool === "rect" ? "default" : "ghost"}
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Rectangle (2)"
-        onclick={() => onToolChange?.("rect")}
-      >
+      <Button variant={activeTool === "rect" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Rectangle (2)" onclick={() => onToolChange?.("rect")}>
         <Square class="h-4 w-4" />
       </Button>
-      <Button
-        variant={activeTool === "polygon" ? "default" : "ghost"}
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Polygon (3)"
-        onclick={() => onToolChange?.("polygon")}
-      >
+      <Button variant={activeTool === "polygon" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Polygon (3)" onclick={() => onToolChange?.("polygon")}>
         <Pentagon class="h-4 w-4" />
       </Button>
-      <Button
-        variant={activeTool === "scissors" ? "default" : "ghost"}
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Intelligent Scissors (4)"
-        onclick={() => onToolChange?.("scissors")}
-      >
+      <Button variant={activeTool === "scissors" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Intelligent Scissors (4)" onclick={() => onToolChange?.("scissors")}>
         <Scissors class="h-4 w-4" />
       </Button>
-      <Button
-        variant={activeTool === "magnetic" ? "default" : "ghost"}
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Magnetic Cursor (5)"
-        onclick={() => onToolChange?.("magnetic")}
-      >
+      <Button variant={activeTool === "magnetic" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Magnetic Cursor (5)" onclick={() => onToolChange?.("magnetic")}>
         <Magnet class="h-4 w-4" />
       </Button>
     </div>
 
     <Separator class="my-2 w-6" />
 
-    <!-- Group: Edit actions (undo, redo, save) -->
+    <!-- Group: Edit actions -->
     <div class="flex flex-col gap-0.5">
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Undo (Ctrl+Z)"
-        disabled={!canUndo}
-        onclick={() => onUndo?.()}
-      >
+      <Button variant="ghost" size="sm" class="h-8 w-8 p-0" title="Undo (Ctrl+Z)" disabled={!canUndo} onclick={() => onUndo?.()}>
         <Undo2 class="h-4 w-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Redo (Ctrl+Shift+Z)"
-        disabled={!canRedo}
-        onclick={() => onRedo?.()}
-      >
+      <Button variant="ghost" size="sm" class="h-8 w-8 p-0" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onclick={() => onRedo?.()}>
         <Redo2 class="h-4 w-4" />
       </Button>
-      <Button
-        variant={isDirty ? "default" : "ghost"}
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="Save (Ctrl+S)"
-        disabled={!isDirty}
-        onclick={() => onSave?.()}
-      >
+      <Button variant={isDirty ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Save (Ctrl+S)" disabled={!isDirty} onclick={() => onSave?.()}>
         <SaveIcon class="h-4 w-4" />
       </Button>
     </div>
@@ -247,23 +182,10 @@
 
     <!-- AI tools -->
     <div class="flex flex-col gap-0.5">
-      <Button
-        variant={samOpen ? "default" : "ghost"}
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="AI-assisted labeling"
-        onclick={() => (samOpen = !samOpen)}
-      >
+      <Button variant={samOpen ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="AI-assisted labeling" onclick={() => (samOpen = !samOpen)}>
         <Sparkles class="h-4 w-4" />
       </Button>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-8 w-8 p-0"
-        title="AI quality judge — coming soon"
-        disabled
-      >
+      <Button variant="ghost" size="sm" class="h-8 w-8 p-0" title="AI quality judge — coming soon" disabled>
         <Bot class="h-4 w-4" />
       </Button>
     </div>
