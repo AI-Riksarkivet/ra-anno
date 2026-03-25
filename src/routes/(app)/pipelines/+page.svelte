@@ -138,34 +138,47 @@
     { id: "dataset", type: "pipeline", position: { x: 0, y: 100 },
       data: { label: "Dataset", description: "mock-dataset-001 (120 pages)", icon: Database, category: "data", status: "active" } },
 
-    // Col 2 — Sampling
-    { id: "stratified", type: "pipeline", position: { x: 300, y: 0 },
-      data: { label: "Stratified Sampler", description: "Balance by doc_type & status", icon: BarChart3, category: "sampling", status: "active" } },
-    { id: "active-learning", type: "pipeline", position: { x: 300, y: 100 },
-      data: { label: "Active Learning", description: "Uncertainty sampling, batch=20", icon: Target, category: "sampling", status: "idle" } },
-    { id: "random-sample", type: "pipeline", position: { x: 300, y: 200 },
-      data: { label: "Random Sample", description: "n=50, seed=42", icon: Shuffle, category: "sampling", status: "idle" } },
+    // === Top path: HTR pipeline ===
+    // Col 2 — Layout detection
+    { id: "ai-labeler-layout", type: "pipeline", position: { x: 300, y: 0 },
+      data: { label: "Layout (YOLO)", description: "dit-base, document layout detection", icon: BrainCircuit, category: "labeling", status: "active" } },
 
-    // Col 3 — Labeling
+    // Col 3 — Text recognition
     { id: "ai-labeler-trocr", type: "pipeline", position: { x: 600, y: 0 },
-      data: { label: "AI Labeler: TrOCR", description: "trocr-v2-riksarkivet", icon: Sparkles, category: "labeling", status: "running" } },
-    { id: "ai-labeler-layout", type: "pipeline", position: { x: 600, y: 100 },
-      data: { label: "AI Labeler: Layout", description: "dit-base, layout analysis", icon: BrainCircuit, category: "labeling", status: "active" } },
-    { id: "weak-supervision", type: "pipeline", position: { x: 600, y: 200 },
-      data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: Tags, category: "labeling", status: "idle" } },
+      data: { label: "TrOCR", description: "trocr-v2-riksarkivet, text recognition", icon: Sparkles, category: "labeling", status: "running" } },
 
-    // Col 4 — Post-process + Eval
-    { id: "append-column", type: "pipeline", position: { x: 900, y: 0 },
-      data: { label: "Append Column", description: "Add predicted_label to dataset", icon: TableProperties, category: "data", status: "idle" } },
-    { id: "ml-backend", type: "pipeline", position: { x: 900, y: 100 },
+    // Col 4 — Append HTR results
+    { id: "append-htr", type: "pipeline", position: { x: 900, y: 0 },
+      data: { label: "Append Column", description: "Add transcription to dataset", icon: TableProperties, category: "data", status: "idle" } },
+
+    // Col 5 top — ML Backend
+    { id: "ml-backend", type: "pipeline", position: { x: 1200, y: 0 },
       data: { label: "ML Backend", description: "Fine-tune, GPU A100", icon: Zap, category: "ml", status: "idle" } },
-    { id: "ai-judge", type: "pipeline", position: { x: 900, y: 200 },
+
+    // === Bottom path: Active Learning ===
+    // Col 2 — Sampling
+    { id: "active-learning", type: "pipeline", position: { x: 300, y: 160 },
+      data: { label: "Active Learning", description: "Uncertainty sampling, batch=20", icon: Target, category: "sampling", status: "active" } },
+
+    // Col 3 — Labeling (parallel)
+    { id: "weak-supervision", type: "pipeline", position: { x: 600, y: 120 },
+      data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: Tags, category: "labeling", status: "idle" } },
+    { id: "ai-labeler-vlm", type: "pipeline", position: { x: 600, y: 240 },
+      data: { label: "AI Labeler (VLM)", description: "Vision-language model classifier", icon: Sparkles, category: "labeling", status: "idle" } },
+
+    // Col 4 — AI Judge
+    { id: "ai-judge", type: "pipeline", position: { x: 900, y: 160 },
       data: { label: "AI Judge", description: "GPT-4o, threshold 0.85", icon: Bot, category: "evaluation", status: "idle" } },
 
-    // Col 5 — Output
-    { id: "eval-metrics", type: "pipeline", position: { x: 1200, y: 0 },
+    // Col 5 — Append AL results
+    { id: "append-al", type: "pipeline", position: { x: 1200, y: 160 },
+      data: { label: "Append Column", description: "Add AL labels to dataset", icon: TableProperties, category: "data", status: "idle" } },
+
+    // === Shared output ===
+    // Col 6 — Eval + Export
+    { id: "eval-metrics", type: "pipeline", position: { x: 1500, y: 0 },
       data: { label: "Eval Metrics", description: "Precision, recall, F1", icon: BarChart3, category: "evaluation", status: "idle" } },
-    { id: "export", type: "pipeline", position: { x: 1200, y: 100 },
+    { id: "export", type: "pipeline", position: { x: 1500, y: 160 },
       data: { label: "Export", description: "Arrow IPC / COCO / ALTO XML", icon: FileOutput, category: "output", status: "idle" } },
   ]);
 
@@ -177,22 +190,21 @@
   };
 
   let edges = $state.raw<Edge[]>([
-    // Dataset → Samplers
-    { id: "e-ds-st", source: "dataset", target: "stratified" },
-    { id: "e-ds-al", source: "dataset", target: "active-learning" },
-    { id: "e-ds-rs", source: "dataset", target: "random-sample" },
-    // Samplers → Labelers
-    { id: "e-st-trocr", source: "stratified", target: "ai-labeler-trocr" },
-    { id: "e-al-layout", source: "active-learning", target: "ai-labeler-layout" },
-    { id: "e-rs-ws", source: "random-sample", target: "weak-supervision" },
-    // Labelers → Post-process
-    { id: "e-trocr-append", source: "ai-labeler-trocr", target: "append-column" },
-    { id: "e-layout-ml", source: "ai-labeler-layout", target: "ml-backend" },
-    { id: "e-ws-judge", source: "weak-supervision", target: "ai-judge" },
-    // Post-process → Output
-    { id: "e-append-eval", source: "append-column", target: "eval-metrics" },
+    // Top path: Dataset → Layout → TrOCR → Append → ML Backend → Eval Metrics
+    { id: "e-ds-layout", source: "dataset", target: "ai-labeler-layout" },
+    { id: "e-layout-trocr", source: "ai-labeler-layout", target: "ai-labeler-trocr" },
+    { id: "e-trocr-append", source: "ai-labeler-trocr", target: "append-htr" },
+    { id: "e-append-ml", source: "append-htr", target: "ml-backend" },
     { id: "e-ml-eval", source: "ml-backend", target: "eval-metrics" },
-    { id: "e-judge-export", source: "ai-judge", target: "export" },
+    // Bottom path: Dataset → Active Learning → WS + VLM → AI Judge → Append → Export
+    { id: "e-ds-al", source: "dataset", target: "active-learning" },
+    { id: "e-al-ws", source: "active-learning", target: "weak-supervision" },
+    { id: "e-al-vlm", source: "active-learning", target: "ai-labeler-vlm" },
+    { id: "e-ws-judge", source: "weak-supervision", target: "ai-judge" },
+    { id: "e-vlm-judge", source: "ai-labeler-vlm", target: "ai-judge" },
+    { id: "e-judge-append", source: "ai-judge", target: "append-al" },
+    { id: "e-append-export", source: "append-al", target: "export" },
+    // Both paths merge into export
     { id: "e-eval-export", source: "eval-metrics", target: "export" },
   ]);
 
@@ -271,6 +283,12 @@
       { key: "confidence", label: "Min confidence", type: "range", value: 0.5 },
       { key: "batchSize", label: "Batch size", type: "number", value: 32 },
       { key: "gpu", label: "GPU", type: "select", options: ["auto", "A100", "T4", "CPU"], value: "auto" },
+    ],
+    "AI Labeler (VLM)": [
+      { key: "model", label: "Model", type: "select", options: ["Qwen2-VL-7B", "InternVL2-8B", "PaLI-3", "custom"], value: "Qwen2-VL-7B", description: "Vision-language model" },
+      { key: "prompt", label: "Prompt", type: "text", value: "Classify this document region", description: "Task instruction for the VLM" },
+      { key: "confidence", label: "Min confidence", type: "range", value: 0.6 },
+      { key: "batchSize", label: "Batch size", type: "number", value: 8 },
     ],
     "AI Labeler: Layout": [
       { key: "model", label: "Model", type: "text", value: "dit-base-finetuned", description: "Layout analysis model" },
