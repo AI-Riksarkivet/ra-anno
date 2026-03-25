@@ -17,6 +17,8 @@
   import Columns2 from "@lucide/svelte/icons/columns-2";
   import Eye from "@lucide/svelte/icons/eye";
   import Pencil from "@lucide/svelte/icons/pencil";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import Bot from "@lucide/svelte/icons/bot";
 
   let {
     activeTool = "select",
@@ -183,6 +185,30 @@
         onclick={() => onSave?.()}
       >
         <SaveIcon class="h-4 w-4" />
+      </Button>
+    </div>
+
+    <Separator class="my-2 w-6" />
+
+    <!-- AI tools (placeholder) -->
+    <div class="flex flex-col gap-0.5">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="AI-assisted labeling — coming soon"
+        disabled
+      >
+        <Sparkles class="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="AI quality judge — coming soon"
+        disabled
+      >
+        <Bot class="h-4 w-4" />
       </Button>
     </div>
   {/if}

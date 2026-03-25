@@ -12,6 +12,7 @@
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
   import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
+  import Bot from "@lucide/svelte/icons/bot";
   import Check from "@lucide/svelte/icons/check";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
@@ -27,6 +28,7 @@
   import Type from "@lucide/svelte/icons/type";
   import ScatterChart from "@lucide/svelte/icons/scatter-chart";
   import Search from "@lucide/svelte/icons/search";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
   import Tags from "@lucide/svelte/icons/tags";
   import X from "@lucide/svelte/icons/x";
 
@@ -772,21 +774,49 @@
             {#snippet child({ props })}
               <Button
                 {...props}
-                variant={bulkMode ? "default" : "ghost"}
+                variant={bulkMode ? "default" : "outline"}
                 size="sm"
                 class="h-7 gap-1 px-2 text-xs"
                 onclick={toggleBulkMode}
               >
                 <Pencil class="h-3.5 w-3.5" />
-                {#if bulkMode}
-                  <AnimatedGradientText colorFrom="#f59e0b" colorTo="#a855f7" speed={1.5} class="text-xs font-medium">
-                    Bulk Labeling
-                  </AnimatedGradientText>
-                {/if}
+                <AnimatedGradientText colorFrom="#f59e0b" colorTo="#a855f7" speed={bulkMode ? 1.5 : 0.8} class="text-xs font-medium">
+                  Bulk Label
+                </AnimatedGradientText>
               </Button>
             {/snippet}
           </Tooltip.Trigger>
           <Tooltip.Content>{bulkMode ? "Exit bulk label mode" : "Select pages and apply labels in bulk"}</Tooltip.Content>
+        </Tooltip.Root>
+
+        <!-- AI-assisted labeling (placeholder) -->
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button {...props} variant="outline" size="sm" class="h-7 gap-1 px-2 text-xs" disabled>
+                <Sparkles class="h-3.5 w-3.5" />
+                <AnimatedGradientText colorFrom="#22c55e" colorTo="#3b82f6" speed={0.6} class="text-xs font-medium">
+                  AI Label
+                </AnimatedGradientText>
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>AI-assisted labeling — coming soon</Tooltip.Content>
+        </Tooltip.Root>
+
+        <!-- AI judge (placeholder) -->
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            {#snippet child({ props })}
+              <Button {...props} variant="outline" size="sm" class="h-7 gap-1 px-2 text-xs" disabled>
+                <Bot class="h-3.5 w-3.5" />
+                <AnimatedGradientText colorFrom="#a855f7" colorTo="#ec4899" speed={0.6} class="text-xs font-medium">
+                  AI Judge
+                </AnimatedGradientText>
+              </Button>
+            {/snippet}
+          </Tooltip.Trigger>
+          <Tooltip.Content>AI quality review — coming soon</Tooltip.Content>
         </Tooltip.Root>
 
         <Separator orientation="vertical" class="h-4" />
