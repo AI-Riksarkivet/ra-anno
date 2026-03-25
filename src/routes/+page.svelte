@@ -17,11 +17,11 @@
 <div class="relative flex h-full flex-col items-center justify-center overflow-hidden">
   <!-- Animated background -->
   <AnimatedGridPattern
-    numSquares={40}
-    maxOpacity={0.08}
-    duration={4}
-    repeatDelay={1}
-    class="absolute inset-0 [mask-image:radial-gradient(500px_circle_at_center,white,transparent)]"
+    numSquares={60}
+    maxOpacity={0.15}
+    duration={3}
+    repeatDelay={0.5}
+    class="absolute inset-0 h-full w-full [mask-image:radial-gradient(800px_circle_at_center,white,transparent)]"
   />
 
   <!-- Content -->
