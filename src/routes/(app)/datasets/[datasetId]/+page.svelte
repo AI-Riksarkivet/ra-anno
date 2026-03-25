@@ -61,6 +61,7 @@
   let columns = $state<ColumnDef[]>([]);
   let total = $state(0);
   let loading = $state(true);
+  let initialLoad = $state(true); // true until first fetch completes
 
   // Scatter plot: all pages (fetched once for the plot)
   let allPages = $state<PageItem[]>([]);
@@ -385,7 +386,10 @@
       });
   });
 
-  // Fetch paginated gallery data (reacts to filters, search, scatter selection, etc.)
+  // Fetch paginated gallery data — debounced to avoid flicker on rapid filter changes
+  let fetchTimer: ReturnType<typeof setTimeout>;
+  let fetchAbort: AbortController | null = null;
+
   $effect(() => {
     const _dataset = datasetId;
     const _search = searchDebounced;
@@ -396,32 +400,44 @@
     const _page = currentPage;
     const _scatterIds = scatterSelection;
 
-    loading = true;
-    const params = new URLSearchParams();
-    params.set("limit", String(pageSize));
-    params.set("offset", String(_page * pageSize));
-    params.set("sort", _sort);
-    params.set("order", _order);
-    if (_search) params.set("q", _search);
-    for (const [key, vals] of Object.entries(_filters)) {
-      if (vals.length > 0) params.set(key, vals.join(","));
-    }
-    for (const [key, [min, max]] of Object.entries(_ranges)) {
-      params.set(`${key}_min`, String(min));
-      params.set(`${key}_max`, String(max));
-    }
-    if (_scatterIds.size > 0) {
-      params.set("page_ids", [..._scatterIds].join(","));
-    }
+    // Debounce: 80ms for smooth slider/filter interaction
+    clearTimeout(fetchTimer);
+    fetchTimer = setTimeout(() => {
+      loading = true;
+      fetchAbort?.abort();
+      const controller = new AbortController();
+      fetchAbort = controller;
 
-    fetch(`/api/thumbnails/${_dataset}?${params}`)
-      .then((r) => r.json())
-      .then((data) => {
-        pages = data.pages;
-        total = data.total;
-        if (data.columns) columns = data.columns;
-        loading = false;
-      });
+      const params = new URLSearchParams();
+      params.set("limit", String(pageSize));
+      params.set("offset", String(_page * pageSize));
+      params.set("sort", _sort);
+      params.set("order", _order);
+      if (_search) params.set("q", _search);
+      for (const [key, vals] of Object.entries(_filters)) {
+        if (vals.length > 0) params.set(key, vals.join(","));
+      }
+      for (const [key, [min, max]] of Object.entries(_ranges)) {
+        params.set(`${key}_min`, String(min));
+        params.set(`${key}_max`, String(max));
+      }
+      if (_scatterIds.size > 0) {
+        params.set("page_ids", [..._scatterIds].join(","));
+      }
+
+      fetch(`/api/thumbnails/${_dataset}?${params}`, { signal: controller.signal })
+        .then((r) => r.json())
+        .then((data) => {
+          pages = data.pages;
+          total = data.total;
+          if (data.columns) columns = data.columns;
+          loading = false;
+          initialLoad = false;
+        })
+        .catch((e) => {
+          if (e.name !== "AbortError") throw e;
+        });
+    }, initialLoad ? 0 : 80);
   });
 </script>
 
@@ -899,9 +915,17 @@
       </Tooltip.Provider>
     </div>
 
+  <!-- Loading bar -->
+  {#if loading && !initialLoad}
+    <div class="h-0.5 w-full overflow-hidden bg-muted">
+      <div class="h-full w-1/3 animate-pulse rounded-full bg-primary/40" style="animation: shimmer 1s ease-in-out infinite; transform: translateX(-100%);">
+      </div>
+    </div>
+  {/if}
+
   <!-- Content -->
-  <div class="flex-1 overflow-y-auto">
-    {#if loading}
+  <div class="flex-1 overflow-y-auto {loading && !initialLoad ? 'opacity-60 transition-opacity duration-150' : ''}">
+    {#if initialLoad}
       <div class="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {#each Array(12) as _, i (i)}
           <div class="aspect-[3/4] animate-pulse rounded-lg bg-muted"></div>
