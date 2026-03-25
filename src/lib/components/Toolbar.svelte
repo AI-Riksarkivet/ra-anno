@@ -28,6 +28,7 @@
   import Spline from "@lucide/svelte/icons/spline";
   import MessageSquare from "@lucide/svelte/icons/message-square";
   import Play from "@lucide/svelte/icons/play";
+  import X from "@lucide/svelte/icons/x";
 
   let {
     activeTool = "select",
@@ -67,11 +68,15 @@
     onToggleSplit?: () => void;
   } = $props();
 
-  // SAM popover state
+  // SAM floating panel state
   let samOpen = $state(false);
   let samModel = $state("SAM3 + GroundingDINO");
   let samPrompt = $state("");
   let samInputMode = $state<"none" | "point" | "bbox" | "polygon">("none");
+  let samPanelX = $state(60);
+  let samPanelY = $state(100);
+  let samDragging = $state(false);
+  let samDragOffset = $state({ x: 0, y: 0 });
   // Dummy collected inputs
   let samPoints = $state<{ x: number; y: number }[]>([]);
   let samBbox = $state<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -242,150 +247,15 @@
 
     <!-- AI tools -->
     <div class="flex flex-col gap-0.5">
-      <!-- SAM / GroundingDINO popover -->
-      <Popover.Root bind:open={samOpen}>
-        <Popover.Trigger>
-          {#snippet child({ props })}
-            <Button
-              {...props}
-              variant={samOpen ? "default" : "ghost"}
-              size="sm"
-              class="h-8 w-8 p-0"
-              title="AI-assisted labeling"
-            >
-              <Sparkles class="h-4 w-4" />
-            </Button>
-          {/snippet}
-        </Popover.Trigger>
-        <Popover.Content side="right" align="start" sideOffset={8} avoidCollisions={false} class="w-72" onInteractOutside={(e) => e.preventDefault()}>
-          <div class="space-y-3">
-            <div>
-              <h4 class="text-sm font-medium">AI-Assisted Labeling</h4>
-              <p class="text-[10px] text-muted-foreground">Provide inputs for the model, then run inference.</p>
-            </div>
-
-            <Separator />
-
-            <!-- Model selector -->
-            <div>
-              <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Model</span>
-              <select class="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" bind:value={samModel}>
-                <option>SAM3 + GroundingDINO</option>
-                <option>SAM2 + GroundingDINO</option>
-                <option>SAM3 (points only)</option>
-                <option>GroundingDINO (text only)</option>
-              </select>
-            </div>
-
-            <!-- Text prompt -->
-            <div>
-              <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text prompt</span>
-              <Input class="h-7 text-xs" placeholder="e.g. handwritten text, signature, stamp..." bind:value={samPrompt} />
-              <p class="mt-0.5 text-[9px] text-muted-foreground">Used by GroundingDINO for open-vocabulary detection</p>
-            </div>
-
-            <Separator />
-
-            <!-- Input selection mode (pick one) -->
-            <div>
-              <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Input selection</span>
-              <p class="mb-2 text-[9px] text-muted-foreground">Choose one input mode, then interact with the canvas.</p>
-
-              <div class="flex flex-col gap-1">
-                <button
-                  class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs {samInputMode === 'point' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}"
-                  onclick={() => selectInputMode("point")}
-                >
-                  <Crosshair class="h-3.5 w-3.5" />
-                  <div class="flex-1 text-left">
-                    <div>Point</div>
-                    <div class="text-[9px] text-muted-foreground">Click canvas to place coordinates</div>
-                  </div>
-                  {#if samPoints.length > 0}
-                    <Badge variant="secondary" class="h-4 px-1 text-[10px]">{samPoints.length}</Badge>
-                  {/if}
-                  {#if samInputMode === "point"}
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
-                  {/if}
-                </button>
-
-                <button
-                  class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs {samInputMode === 'bbox' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}"
-                  onclick={() => selectInputMode("bbox")}
-                >
-                  <RectangleHorizontal class="h-3.5 w-3.5" />
-                  <div class="flex-1 text-left">
-                    <div>Bounding box</div>
-                    <div class="text-[9px] text-muted-foreground">Drag on canvas to select region crop</div>
-                  </div>
-                  {#if samBbox}
-                    <Badge variant="secondary" class="h-4 px-1 text-[10px]">1</Badge>
-                  {/if}
-                  {#if samInputMode === "bbox"}
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
-                  {/if}
-                </button>
-
-                <button
-                  class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs {samInputMode === 'polygon' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}"
-                  onclick={() => selectInputMode("polygon")}
-                >
-                  <Spline class="h-3.5 w-3.5" />
-                  <div class="flex-1 text-left">
-                    <div>Polygon</div>
-                    <div class="text-[9px] text-muted-foreground">Select annotation polygon as region crop</div>
-                  </div>
-                  {#if samPolygonCount > 0}
-                    <Badge variant="secondary" class="h-4 px-1 text-[10px]">{samPolygonCount}</Badge>
-                  {/if}
-                  {#if samInputMode === "polygon"}
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
-                  {/if}
-                </button>
-              </div>
-            </div>
-
-            <!-- Collected input preview -->
-            {#if samPoints.length > 0 || samBbox || samPolygonCount > 0}
-              <div class="rounded-md border border-border bg-muted/30 p-2">
-                <span class="mb-1 block text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Collected input</span>
-                {#if samPoints.length > 0}
-                  <div class="text-[10px] text-muted-foreground">
-                    {#each samPoints as pt, i (i)}
-                      <span class="mr-1 inline-block rounded bg-muted px-1 py-0.5 font-mono text-[9px]">({pt.x}, {pt.y})</span>
-                    {/each}
-                  </div>
-                {/if}
-                {#if samBbox}
-                  <div class="text-[10px] text-muted-foreground">
-                    <span class="inline-block rounded bg-muted px-1 py-0.5 font-mono text-[9px]">bbox({samBbox.x}, {samBbox.y}, {samBbox.w}×{samBbox.h})</span>
-                    <span class="ml-1 text-[9px]">→ crop</span>
-                  </div>
-                {/if}
-                {#if samPolygonCount > 0}
-                  <div class="text-[10px] text-muted-foreground">
-                    <span class="inline-block rounded bg-muted px-1 py-0.5 font-mono text-[9px]">{samPolygonCount} polygon{samPolygonCount > 1 ? "s" : ""}</span>
-                    <span class="ml-1 text-[9px]">→ crop</span>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-
-            <Separator />
-
-            <!-- Actions -->
-            <div class="flex gap-1.5">
-              <Button variant="default" size="sm" class="flex-1 gap-1 text-xs" disabled={!hasSamInput}>
-                <Play class="h-3 w-3" />
-                Run Inference
-              </Button>
-              <Button variant="outline" size="sm" class="text-xs" onclick={clearSamInputs}>
-                Clear
-              </Button>
-            </div>
-          </div>
-        </Popover.Content>
-      </Popover.Root>
+      <Button
+        variant={samOpen ? "default" : "ghost"}
+        size="sm"
+        class="h-8 w-8 p-0"
+        title="AI-assisted labeling"
+        onclick={() => (samOpen = !samOpen)}
+      >
+        <Sparkles class="h-4 w-4" />
+      </Button>
 
       <Button
         variant="ghost"
@@ -443,3 +313,150 @@
     {/if}
   </div>
 </div>
+
+<!-- SAM floating panel -->
+{#if samOpen}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="fixed z-50 w-72 rounded-lg border bg-background shadow-2xl"
+    style="left: {samPanelX}px; top: {samPanelY}px;"
+    onmousemove={(e) => { if (samDragging) { samPanelX = e.clientX - samDragOffset.x; samPanelY = e.clientY - samDragOffset.y; } }}
+    onmouseup={() => (samDragging = false)}
+    onmouseleave={() => (samDragging = false)}
+  >
+    <!-- Draggable title bar -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="flex cursor-move items-center gap-2 border-b bg-muted/50 px-3 py-1.5"
+      onmousedown={(e) => { samDragging = true; samDragOffset = { x: e.clientX - samPanelX, y: e.clientY - samPanelY }; e.preventDefault(); }}
+    >
+      <Sparkles class="h-3.5 w-3.5 text-muted-foreground" />
+      <span class="text-xs font-medium">AI-Assisted Labeling</span>
+      <button class="ml-auto text-muted-foreground hover:text-foreground" onclick={() => { samOpen = false; clearSamInputs(); }}>
+        <X class="h-3.5 w-3.5" />
+      </button>
+    </div>
+
+    <div class="space-y-3 p-3">
+      <p class="text-[10px] text-muted-foreground">Select an input mode, interact with the canvas, then run inference.</p>
+
+      <!-- Model selector -->
+      <div>
+        <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Model</span>
+        <select class="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none" bind:value={samModel}>
+          <option>SAM3 + GroundingDINO</option>
+          <option>SAM2 + GroundingDINO</option>
+          <option>SAM3 (points only)</option>
+          <option>GroundingDINO (text only)</option>
+        </select>
+      </div>
+
+      <!-- Text prompt -->
+      <div>
+        <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Text prompt</span>
+        <Input class="h-7 text-xs" placeholder="e.g. handwritten text, signature, stamp..." bind:value={samPrompt} />
+        <p class="mt-0.5 text-[9px] text-muted-foreground">GroundingDINO open-vocabulary detection</p>
+      </div>
+
+      <Separator />
+
+      <!-- Input selection (pick one) -->
+      <div>
+        <span class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Input selection</span>
+        <p class="mb-2 text-[9px] text-muted-foreground">Pick one mode, then interact with the canvas.</p>
+
+        <div class="flex flex-col gap-1">
+          <button
+            class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs {samInputMode === 'point' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}"
+            onclick={() => selectInputMode("point")}
+          >
+            <Crosshair class="h-3.5 w-3.5" />
+            <div class="flex-1 text-left">
+              <div>Point</div>
+              <div class="text-[9px] text-muted-foreground">Click canvas → coordinates</div>
+            </div>
+            {#if samPoints.length > 0}
+              <Badge variant="secondary" class="h-4 px-1 text-[10px]">{samPoints.length}</Badge>
+            {/if}
+            {#if samInputMode === "point"}
+              <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
+            {/if}
+          </button>
+
+          <button
+            class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs {samInputMode === 'bbox' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}"
+            onclick={() => selectInputMode("bbox")}
+          >
+            <RectangleHorizontal class="h-3.5 w-3.5" />
+            <div class="flex-1 text-left">
+              <div>Bounding box</div>
+              <div class="text-[9px] text-muted-foreground">Drag on canvas → region crop</div>
+            </div>
+            {#if samBbox}
+              <Badge variant="secondary" class="h-4 px-1 text-[10px]">1</Badge>
+            {/if}
+            {#if samInputMode === "bbox"}
+              <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
+            {/if}
+          </button>
+
+          <button
+            class="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs {samInputMode === 'polygon' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}"
+            onclick={() => selectInputMode("polygon")}
+          >
+            <Spline class="h-3.5 w-3.5" />
+            <div class="flex-1 text-left">
+              <div>Polygon</div>
+              <div class="text-[9px] text-muted-foreground">Select polygon → region crop</div>
+            </div>
+            {#if samPolygonCount > 0}
+              <Badge variant="secondary" class="h-4 px-1 text-[10px]">{samPolygonCount}</Badge>
+            {/if}
+            {#if samInputMode === "polygon"}
+              <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"></span>
+            {/if}
+          </button>
+        </div>
+      </div>
+
+      <!-- Collected input preview -->
+      {#if samPoints.length > 0 || samBbox || samPolygonCount > 0}
+        <div class="rounded-md border border-border bg-muted/30 p-2">
+          <span class="mb-1 block text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Collected</span>
+          {#if samPoints.length > 0}
+            <div class="text-[10px] text-muted-foreground">
+              {#each samPoints as pt, i (i)}
+                <span class="mr-1 inline-block rounded bg-muted px-1 py-0.5 font-mono text-[9px]">({pt.x}, {pt.y})</span>
+              {/each}
+            </div>
+          {/if}
+          {#if samBbox}
+            <div class="text-[10px] text-muted-foreground">
+              <span class="inline-block rounded bg-muted px-1 py-0.5 font-mono text-[9px]">bbox({samBbox.x}, {samBbox.y}, {samBbox.w}x{samBbox.h})</span>
+              <span class="ml-1 text-[9px]">→ crop</span>
+            </div>
+          {/if}
+          {#if samPolygonCount > 0}
+            <div class="text-[10px] text-muted-foreground">
+              <span class="inline-block rounded bg-muted px-1 py-0.5 font-mono text-[9px]">{samPolygonCount} polygon{samPolygonCount > 1 ? "s" : ""}</span>
+              <span class="ml-1 text-[9px]">→ crop</span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <Separator />
+
+      <!-- Actions -->
+      <div class="flex gap-1.5">
+        <Button variant="default" size="sm" class="flex-1 gap-1 text-xs" disabled={!hasSamInput}>
+          <Play class="h-3 w-3" />
+          Run Inference
+        </Button>
+        <Button variant="outline" size="sm" class="text-xs" onclick={clearSamInputs}>
+          Clear
+        </Button>
+      </div>
+    </div>
+  </div>
+{/if}
