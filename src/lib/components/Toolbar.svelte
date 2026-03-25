@@ -111,21 +111,22 @@
 <!-- Vertical left sidebar toolbar -->
 <div class="flex h-full w-11 flex-col items-center border-r bg-background py-2">
   <!-- Mode toggle -->
-  <Button
-    variant={mode === "edit" ? "default" : "outline"}
-    size="sm"
-    class="mb-2 h-8 w-8 p-0"
+  <button
+    class="mb-2 flex flex-col items-center gap-0.5"
     title={mode === "view" ? "Switch to Edit mode" : "Switch to View mode"}
     onclick={() => onToggleMode?.()}
   >
-    {#if mode === "edit"}
-      <AnimatedShinyText shimmerWidth={50} class="flex items-center text-primary-foreground">
-        <Pencil class="h-4 w-4" />
-      </AnimatedShinyText>
-    {:else}
-      <Eye class="h-4 w-4" />
-    {/if}
-  </Button>
+    <div class="flex h-8 w-8 items-center justify-center rounded-md transition-colors {mode === 'edit' ? 'bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/30' : 'border border-border bg-background hover:bg-accent'}">
+      {#if mode === "edit"}
+        <AnimatedShinyText shimmerWidth={50} class="flex items-center text-primary-foreground">
+          <Pencil class="h-4 w-4" />
+        </AnimatedShinyText>
+      {:else}
+        <Eye class="h-4 w-4" />
+      {/if}
+    </div>
+    <span class="text-[8px] font-medium uppercase {mode === 'edit' ? 'text-primary' : 'text-muted-foreground'}">{mode === "edit" ? "Edit" : "View"}</span>
+  </button>
 
   <Separator class="mb-2 w-6" />
 
