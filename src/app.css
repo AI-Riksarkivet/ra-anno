@@ -195,3 +195,24 @@
 .dark .pixi-grid {
   background-image: radial-gradient(circle, oklch(0.65 0 0 / 0.2) 0.6px, transparent 0.6px);
 }
+
+/* Svelte Flow — follow app theme */
+.svelte-flow {
+  --xy-background-color: var(--background);
+  --xy-node-background-color: var(--card);
+  --xy-node-border-color: var(--border);
+  --xy-node-color: var(--foreground);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-handle-background-color: var(--muted-foreground);
+  --xy-handle-border-color: var(--background);
+  --xy-minimap-background-color: var(--card);
+  --xy-minimap-mask-background-color: oklch(0 0 0 / 0.1);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-background-pattern-color: var(--border);
+}
+
+.dark .svelte-flow {
+  --xy-minimap-mask-background-color: oklch(1 0 0 / 0.08);
+}
