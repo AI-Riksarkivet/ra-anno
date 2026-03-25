@@ -116,7 +116,7 @@
     title={mode === "view" ? "Switch to Edit mode" : "Switch to View mode"}
     onclick={() => onToggleMode?.()}
   >
-    <div class="flex h-8 w-8 items-center justify-center rounded-md ring-2 transition-colors {mode === 'edit' ? 'bg-primary text-primary-foreground shadow-sm ring-primary/30' : 'bg-muted text-muted-foreground ring-muted-foreground/20 hover:bg-accent'}">
+    <div class="flex h-8 w-8 items-center justify-center rounded-md ring-2 transition-all duration-200 {mode === 'edit' ? 'bg-primary text-primary-foreground ring-primary/50 shadow-[0_0_10px_2px] shadow-primary/40' : 'bg-muted text-muted-foreground ring-muted-foreground/20 hover:bg-accent'}">
       {#if mode === "edit"}
         <AnimatedShinyText shimmerWidth={50} class="flex items-center text-primary-foreground">
           <Pencil class="h-4 w-4" />
