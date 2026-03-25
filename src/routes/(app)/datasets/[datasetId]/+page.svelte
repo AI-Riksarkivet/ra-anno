@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { bulk_update_pages } from "$lib/bulk-update.remote";
+  import AnimatedGradientText from "$lib/components/magic/animated-gradient-text/animated-gradient-text.svelte";
   import ScatterPlot from "$lib/components/ScatterPlot.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -137,6 +138,8 @@
   let checkedIds = $state<Set<string>>(new Set());
   let bulkSubmitting = $state(false);
   let bulkForm = $state<Record<string, string>>({});
+  let customFieldName = $state("");
+  let customFieldValue = $state("");
 
   const checkedCount = $derived(checkedIds.size);
   const allCheckedOnPage = $derived(
@@ -775,7 +778,11 @@
                 onclick={toggleBulkMode}
               >
                 <Pencil class="h-3.5 w-3.5" />
-                {#if bulkMode}Bulk Labeling{/if}
+                {#if bulkMode}
+                  <AnimatedGradientText colorFrom="#f59e0b" colorTo="#a855f7" speed={1.5} class="text-xs font-medium">
+                    Bulk Labeling
+                  </AnimatedGradientText>
+                {/if}
               </Button>
             {/snippet}
           </Tooltip.Trigger>
@@ -1025,7 +1032,9 @@
 
   <!-- Bulk label right panel — shows when in bulk mode with items checked -->
   {#if bulkMode && checkedCount > 0}
-    <div class="flex h-full w-72 flex-col border-l bg-background">
+    <Resizable.Handle />
+    <Resizable.Pane defaultSize={22} minSize={15} maxSize={40}>
+    <div class="flex h-full flex-col bg-background">
       <div class="flex items-center gap-2 border-b px-3 py-2">
         <Tags class="h-4 w-4 text-primary" />
         <span class="text-sm font-medium">Bulk Label</span>
@@ -1037,9 +1046,24 @@
 
       <div class="flex-1 overflow-y-auto p-3">
         <p class="mb-3 text-xs text-muted-foreground">
-          Set values below to apply to all {checkedCount} selected pages. Leave a field empty to keep its current value.
+          Set values to apply to all {checkedCount} selected pages. Unchanged fields keep their current value.
         </p>
 
+        <!-- Text field (textarea) -->
+        <div class="mb-4">
+          <label class="mb-1.5 block text-xs font-medium">Text</label>
+          <textarea
+            class="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+            rows={3}
+            placeholder="Leave empty to keep current text..."
+            value={bulkForm["text"] ?? ""}
+            oninput={(e) => { bulkForm = { ...bulkForm, text: e.currentTarget.value }; }}
+          ></textarea>
+        </div>
+
+        <Separator class="mb-4" />
+
+        <!-- Enum fields -->
         {#each enumColumns as col (col.name)}
           <div class="mb-4">
             <label class="mb-1.5 block text-xs font-medium capitalize">{col.name.replace("_", " ")}</label>
@@ -1063,6 +1087,68 @@
                 </button>
               {/each}
             </div>
+            <!-- Custom value input -->
+            <div class="mt-1.5 flex items-center gap-1">
+              <input
+                type="text"
+                class="h-6 flex-1 rounded border border-border bg-background px-1.5 text-[10px] placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                placeholder="Or type a new value..."
+                value={bulkForm[col.name] && !(col.values ?? []).includes(bulkForm[col.name]) ? bulkForm[col.name] : ""}
+                oninput={(e) => {
+                  const v = e.currentTarget.value;
+                  if (v) {
+                    bulkForm = { ...bulkForm, [col.name]: v };
+                  }
+                }}
+              />
+            </div>
+          </div>
+        {/each}
+
+        <Separator class="mb-4" />
+
+        <!-- Add custom column -->
+        <div class="mb-2">
+          <span class="mb-1.5 block text-xs font-medium">Custom field</span>
+          <p class="mb-1.5 text-[10px] text-muted-foreground">Add a value for a column not listed above.</p>
+          <div class="flex items-center gap-1">
+            <input
+              type="text"
+              class="h-7 w-24 rounded border border-border bg-background px-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              placeholder="Column name"
+              bind:value={customFieldName}
+            />
+            <input
+              type="text"
+              class="h-7 flex-1 rounded border border-border bg-background px-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              placeholder="Value"
+              bind:value={customFieldValue}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 px-2 text-xs"
+              disabled={!customFieldName || !customFieldValue}
+              onclick={() => {
+                bulkForm = { ...bulkForm, [customFieldName]: customFieldValue };
+                customFieldName = "";
+                customFieldValue = "";
+              }}
+            >
+              Add
+            </Button>
+          </div>
+        </div>
+
+        <!-- Show custom fields that were added -->
+        {#each Object.entries(bulkForm).filter(([k, v]) => v && !enumColumns.some((c) => c.name === k) && k !== "text") as [key, val] (key)}
+          <div class="mt-1 flex items-center gap-1 rounded border border-primary/20 bg-primary/5 px-2 py-1 text-xs">
+            <span class="font-medium">{key}</span>
+            <span class="text-muted-foreground">=</span>
+            <span class="flex-1 truncate">{val}</span>
+            <button class="text-muted-foreground hover:text-foreground" onclick={() => { const { [key]: _, ...rest } = bulkForm; bulkForm = rest; }}>
+              <X class="h-3 w-3" />
+            </button>
           </div>
         {/each}
       </div>
@@ -1090,6 +1176,7 @@
         </Button>
       </div>
     </div>
+    </Resizable.Pane>
   {/if}
 </Resizable.PaneGroup>
 
@@ -1097,7 +1184,7 @@
 {#if embeddingsPopped}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="fixed z-50 flex flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
+    class="fixed z-50 flex flex-col rounded-lg border bg-background shadow-2xl"
     style="left: {popX}px; top: {popY}px; width: {popW}px; height: {popH}px;"
     onmousemove={handleWindowMouseMove}
     onmouseup={handleWindowMouseUp}
@@ -1124,18 +1211,19 @@
           {/each}
         </div>
         {#if scatterSelection.size > 0}
-          <button class="text-muted-foreground hover:text-foreground" onclick={() => { scatterSelection = new Set(); currentPage = 0; }}>
-            <X class="h-3 w-3" />
+          <button class="rounded border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent hover:text-foreground" onclick={() => { scatterSelection = new Set(); currentPage = 0; }}>
+            Clear
           </button>
         {/if}
-        <button class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" onclick={dockEmbeddings} title="Dock back to sidebar">
+        <Separator orientation="vertical" class="h-3" />
+        <button class="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onclick={dockEmbeddings} title="Close and dock back to sidebar">
           <X class="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
 
-    <!-- Scatter plot content -->
-    <div class="flex-1">
+    <!-- Scatter plot content — min-h-0 + overflow-hidden so flex-1 shrinks and bind:clientWidth/Height updates -->
+    <div class="min-h-0 flex-1 overflow-hidden">
       <ScatterPlot
         points={allPages}
         selectedIds={scatterSelection}
@@ -1145,14 +1233,16 @@
       />
     </div>
 
-    <!-- Resize handle -->
+    <!-- Resize handle (bottom-right corner, more visible) -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize"
+      class="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize"
       onmousedown={startResize}
     >
-      <svg class="h-4 w-4 text-muted-foreground/40" viewBox="0 0 16 16">
-        <path d="M14 14L8 14L14 8Z" fill="currentColor" />
+      <svg class="h-5 w-5 text-muted-foreground/30" viewBox="0 0 20 20">
+        <line x1="18" y1="8" x2="8" y2="18" stroke="currentColor" stroke-width="1.5" />
+        <line x1="18" y1="13" x2="13" y2="18" stroke="currentColor" stroke-width="1.5" />
+        <line x1="18" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" />
       </svg>
     </div>
   </div>
