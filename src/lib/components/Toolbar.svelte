@@ -18,6 +18,7 @@
   import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
   import LayoutGrid from "@lucide/svelte/icons/layout-grid";
   import Columns2 from "@lucide/svelte/icons/columns-2";
+  import AnimatedShinyText from "$lib/components/magic/animated-shiny-text/animated-shiny-text.svelte";
   import Eye from "@lucide/svelte/icons/eye";
   import Pencil from "@lucide/svelte/icons/pencil";
   import Sparkles from "@lucide/svelte/icons/sparkles";
@@ -110,19 +111,19 @@
 <!-- Vertical left sidebar toolbar -->
 <div class="flex h-full w-11 flex-col items-center border-r bg-background py-2">
   <!-- Mode toggle -->
-  <Button
-    variant={mode === "edit" ? "default" : "outline"}
-    size="sm"
-    class="mb-2 h-8 w-8 p-0"
-    title={mode === "view" ? "Switch to Edit" : "Switch to View"}
+  <button
+    class="mb-2 flex h-8 w-8 items-center justify-center rounded-md text-xs font-medium transition-colors {mode === 'edit' ? 'bg-primary text-primary-foreground shadow-sm' : 'border border-border hover:bg-accent'}"
+    title={mode === "view" ? "Switch to Edit mode" : "Switch to View mode"}
     onclick={() => onToggleMode?.()}
   >
-    {#if mode === "view"}
-      <Eye class="h-4 w-4" />
+    {#if mode === "edit"}
+      <AnimatedShinyText shimmerWidth={60} class="text-primary-foreground">
+        <Pencil class="h-4 w-4" />
+      </AnimatedShinyText>
     {:else}
-      <Pencil class="h-4 w-4" />
+      <Eye class="h-4 w-4" />
     {/if}
-  </Button>
+  </button>
 
   <Separator class="mb-2 w-6" />
 
@@ -255,7 +256,7 @@
             </Button>
           {/snippet}
         </Popover.Trigger>
-        <Popover.Content side="right" align="start" sideOffset={8} class="w-72" onInteractOutside={(e) => e.preventDefault()}>
+        <Popover.Content side="right" align="start" sideOffset={8} avoidCollisions={false} class="w-72" onInteractOutside={(e) => e.preventDefault()}>
           <div class="space-y-3">
             <div>
               <h4 class="text-sm font-medium">AI-Assisted Labeling</h4>
