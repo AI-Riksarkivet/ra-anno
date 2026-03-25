@@ -66,6 +66,7 @@
         height: Math.max(height, 1),
         preference: "webgpu",
         backgroundAlpha: 0,
+        background: "transparent",
         antialias: true,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,

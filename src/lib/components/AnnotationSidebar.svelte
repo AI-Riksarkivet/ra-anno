@@ -215,7 +215,7 @@
     {@render collapseToggle()}
   </div>
 {:else}
-<div class="flex h-full w-72 flex-col border-l bg-card">
+<div class="flex h-full min-w-0 flex-col border-l bg-card">
   <div class="flex items-center justify-between border-b px-2 py-1">
     <span class="text-xs font-medium text-muted-foreground">Annotations</span>
     {@render collapseToggle()}
