@@ -1,10 +1,11 @@
 <script lang="ts" module>
   import type { Node, NodeProps } from "@xyflow/svelte";
+  import type { Component } from "svelte";
 
   export type PipelineNodeData = {
     label: string;
     description?: string;
-    icon?: string;
+    icon?: Component;
     category: "data" | "labeling" | "sampling" | "evaluation" | "ml" | "output";
     status?: "active" | "idle" | "error" | "running";
     config?: Record<string, unknown>;
@@ -45,7 +46,9 @@
 
   <div class="flex items-start gap-2">
     {#if data.icon}
-      <span class="mt-0.5 text-lg">{data.icon}</span>
+      <div class="mt-0.5 {colors.icon}">
+        <data.icon class="h-4 w-4" />
+      </div>
     {/if}
     <div class="flex-1">
       <div class="flex items-center gap-1.5">

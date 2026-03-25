@@ -15,12 +15,25 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
+  import Bell from "@lucide/svelte/icons/bell";
+  import Bot from "@lucide/svelte/icons/bot";
+  import BrainCircuit from "@lucide/svelte/icons/brain-circuit";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import Database from "@lucide/svelte/icons/database";
+  import Dna from "@lucide/svelte/icons/dna";
+  import FileOutput from "@lucide/svelte/icons/file-output";
+  import Filter from "@lucide/svelte/icons/filter";
   import FolderOpen from "@lucide/svelte/icons/folder-open";
+  import Handshake from "@lucide/svelte/icons/handshake";
   import Play from "@lucide/svelte/icons/play";
   import Save from "@lucide/svelte/icons/save";
-  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Shuffle from "@lucide/svelte/icons/shuffle";
+  import Sparkles from "@lucide/svelte/icons/sparkles";
+  import Tags from "@lucide/svelte/icons/tags";
+  import Target from "@lucide/svelte/icons/target";
+  import User from "@lucide/svelte/icons/user";
+  import Zap from "@lucide/svelte/icons/zap";
 
   import PipelineNode from "./nodes/PipelineNode.svelte";
   import type { PipelineNodeType, PipelineNodeData } from "./nodes/PipelineNode.svelte";
@@ -37,51 +50,51 @@
       category: "Data",
       color: "bg-blue-400",
       items: [
-        { label: "Dataset", data: { label: "Dataset", icon: "📦", category: "data", description: "Data source" } },
-        { label: "Data Filter", data: { label: "Data Filter", icon: "🔍", category: "data", description: "Filter by criteria" } },
+        { label: "Dataset", data: { label: "Dataset", icon: Database, category: "data", description: "Data source" } },
+        { label: "Data Filter", data: { label: "Data Filter", icon: Filter, category: "data", description: "Filter by criteria" } },
       ],
     },
     {
       category: "Sampling",
       color: "bg-green-400",
       items: [
-        { label: "Active Learning", data: { label: "Active Learning", icon: "🎯", category: "sampling", description: "Uncertainty sampling" } },
-        { label: "Stratified Sampler", data: { label: "Stratified Sampler", icon: "📊", category: "sampling", description: "Balanced sampling" } },
-        { label: "Random Sample", data: { label: "Random Sample", icon: "🎲", category: "sampling", description: "Random subset" } },
+        { label: "Active Learning", data: { label: "Active Learning", icon: Target, category: "sampling", description: "Uncertainty sampling" } },
+        { label: "Stratified Sampler", data: { label: "Stratified Sampler", icon: BarChart3, category: "sampling", description: "Balanced sampling" } },
+        { label: "Random Sample", data: { label: "Random Sample", icon: Shuffle, category: "sampling", description: "Random subset" } },
       ],
     },
     {
       category: "Labeling",
       color: "bg-amber-400",
       items: [
-        { label: "AI Labeler", data: { label: "AI Labeler", icon: "🤖", category: "labeling", description: "Custom model" } },
-        { label: "Weak Supervision", data: { label: "Weak Supervision", icon: "🏷️", category: "labeling", description: "Labeling functions" } },
-        { label: "Human Review", data: { label: "Human Review", icon: "👤", category: "labeling", description: "Manual annotation queue" } },
+        { label: "AI Labeler", data: { label: "AI Labeler", icon: Sparkles, category: "labeling", description: "Custom model" } },
+        { label: "Weak Supervision", data: { label: "Weak Supervision", icon: Tags, category: "labeling", description: "Labeling functions" } },
+        { label: "Human Review", data: { label: "Human Review", icon: User, category: "labeling", description: "Manual annotation queue" } },
       ],
     },
     {
       category: "ML",
       color: "bg-rose-400",
       items: [
-        { label: "ML Backend", data: { label: "ML Backend", icon: "⚡", category: "ml", description: "Training pipeline" } },
-        { label: "Embedding Model", data: { label: "Embedding Model", icon: "🧬", category: "ml", description: "Feature extraction" } },
+        { label: "ML Backend", data: { label: "ML Backend", icon: Zap, category: "ml", description: "Training pipeline" } },
+        { label: "Embedding Model", data: { label: "Embedding Model", icon: Dna, category: "ml", description: "Feature extraction" } },
       ],
     },
     {
       category: "Evaluation",
       color: "bg-purple-400",
       items: [
-        { label: "AI Judge", data: { label: "AI Judge", icon: "⚖️", category: "evaluation", description: "Quality review" } },
-        { label: "Eval Metrics", data: { label: "Eval Metrics", icon: "📈", category: "evaluation", description: "Compute metrics" } },
-        { label: "Consensus", data: { label: "Consensus", icon: "🤝", category: "evaluation", description: "Inter-annotator agreement" } },
+        { label: "AI Judge", data: { label: "AI Judge", icon: Bot, category: "evaluation", description: "Quality review" } },
+        { label: "Eval Metrics", data: { label: "Eval Metrics", icon: BarChart3, category: "evaluation", description: "Compute metrics" } },
+        { label: "Consensus", data: { label: "Consensus", icon: Handshake, category: "evaluation", description: "Inter-annotator agreement" } },
       ],
     },
     {
       category: "Output",
       color: "bg-cyan-400",
       items: [
-        { label: "Export", data: { label: "Export", icon: "📤", category: "output", description: "Export pipeline" } },
-        { label: "Webhook", data: { label: "Webhook", icon: "🔔", category: "output", description: "Notify external service" } },
+        { label: "Export", data: { label: "Export", icon: FileOutput, category: "output", description: "Export pipeline" } },
+        { label: "Webhook", data: { label: "Webhook", icon: Bell, category: "output", description: "Notify external service" } },
       ],
     },
   ];
@@ -116,67 +129,67 @@
       id: "dataset",
       type: "pipeline",
       position: { x: 0, y: 200 },
-      data: { label: "Dataset", description: "mock-dataset-001 (120 pages)", icon: "📦", category: "data", status: "active" },
+      data: { label: "Dataset", description: "mock-dataset-001 (120 pages)", icon: Database, category: "data", status: "active" },
     },
     {
       id: "active-learning",
       type: "pipeline",
       position: { x: 280, y: 80 },
-      data: { label: "Active Learning", description: "Uncertainty sampling, batch=20", icon: "🎯", category: "sampling", status: "idle" },
+      data: { label: "Active Learning", description: "Uncertainty sampling, batch=20", icon: Target, category: "sampling", status: "idle" },
     },
     {
       id: "stratified",
       type: "pipeline",
       position: { x: 280, y: 200 },
-      data: { label: "Stratified Sampler", description: "Balance by doc_type & status", icon: "📊", category: "sampling", status: "active" },
+      data: { label: "Stratified Sampler", description: "Balance by doc_type & status", icon: BarChart3, category: "sampling", status: "active" },
     },
     {
       id: "random-sample",
       type: "pipeline",
       position: { x: 280, y: 320 },
-      data: { label: "Random Sample", description: "n=50, seed=42", icon: "🎲", category: "sampling", status: "idle" },
+      data: { label: "Random Sample", description: "n=50, seed=42", icon: Shuffle, category: "sampling", status: "idle" },
     },
     {
       id: "ai-labeler-trocr",
       type: "pipeline",
       position: { x: 580, y: 80 },
-      data: { label: "AI Labeler: TrOCR", description: "trocr-v2-riksarkivet", icon: "🤖", category: "labeling", status: "running" },
+      data: { label: "AI Labeler: TrOCR", description: "trocr-v2-riksarkivet", icon: Sparkles, category: "labeling", status: "running" },
     },
     {
       id: "ai-labeler-layout",
       type: "pipeline",
       position: { x: 580, y: 200 },
-      data: { label: "AI Labeler: Layout", description: "dit-base, layout analysis", icon: "🧠", category: "labeling", status: "active" },
+      data: { label: "AI Labeler: Layout", description: "dit-base, layout analysis", icon: BrainCircuit, category: "labeling", status: "active" },
     },
     {
       id: "weak-supervision",
       type: "pipeline",
       position: { x: 580, y: 320 },
-      data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: "🏷️", category: "labeling", status: "idle" },
+      data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: Tags, category: "labeling", status: "idle" },
     },
     {
       id: "ml-backend",
       type: "pipeline",
       position: { x: 880, y: 140 },
-      data: { label: "ML Backend", description: "Fine-tune, GPU A100", icon: "⚡", category: "ml", status: "idle" },
+      data: { label: "ML Backend", description: "Fine-tune, GPU A100", icon: Zap, category: "ml", status: "idle" },
     },
     {
       id: "ai-judge",
       type: "pipeline",
       position: { x: 880, y: 280 },
-      data: { label: "AI Judge", description: "GPT-4o, threshold 0.85", icon: "⚖️", category: "evaluation", status: "idle" },
+      data: { label: "AI Judge", description: "GPT-4o, threshold 0.85", icon: Bot, category: "evaluation", status: "idle" },
     },
     {
       id: "eval-metrics",
       type: "pipeline",
       position: { x: 1160, y: 140 },
-      data: { label: "Evaluation Metrics", description: "Precision, recall, F1", icon: "📈", category: "evaluation", status: "idle" },
+      data: { label: "Evaluation Metrics", description: "Precision, recall, F1", icon: BarChart3, category: "evaluation", status: "idle" },
     },
     {
       id: "export",
       type: "pipeline",
       position: { x: 1160, y: 280 },
-      data: { label: "Export Pipeline", description: "Arrow IPC / COCO / ALTO XML", icon: "📤", category: "output", status: "idle" },
+      data: { label: "Export Pipeline", description: "Arrow IPC / COCO / ALTO XML", icon: FileOutput, category: "output", status: "idle" },
     },
   ]);
 
@@ -275,7 +288,10 @@
                     class="flex items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
                     onclick={() => addNode(item)}
                   >
-                    <span class="text-sm">{item.data.icon}</span>
+                    {#if item.data.icon}
+                      {@const Icon = item.data.icon}
+                      <Icon class="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {/if}
                     <div class="min-w-0 flex-1">
                       <div class="truncate text-[11px] font-medium">{item.label}</div>
                       <div class="truncate text-[9px] text-muted-foreground">{item.data.description}</div>
