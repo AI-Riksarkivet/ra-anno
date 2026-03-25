@@ -20,6 +20,7 @@
   import Bot from "@lucide/svelte/icons/bot";
   import BrainCircuit from "@lucide/svelte/icons/brain-circuit";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Copy from "@lucide/svelte/icons/copy";
   import Database from "@lucide/svelte/icons/database";
   import Dna from "@lucide/svelte/icons/dna";
   import FileOutput from "@lucide/svelte/icons/file-output";
@@ -31,8 +32,13 @@
   import Shuffle from "@lucide/svelte/icons/shuffle";
   import Sparkles from "@lucide/svelte/icons/sparkles";
   import Tags from "@lucide/svelte/icons/tags";
+  import TableProperties from "@lucide/svelte/icons/table-properties";
   import Target from "@lucide/svelte/icons/target";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import GitFork from "@lucide/svelte/icons/git-fork";
+  import Code from "@lucide/svelte/icons/code";
   import User from "@lucide/svelte/icons/user";
+  import X from "@lucide/svelte/icons/x";
   import Zap from "@lucide/svelte/icons/zap";
 
   import PipelineNode from "./nodes/PipelineNode.svelte";
@@ -52,6 +58,9 @@
       items: [
         { label: "Dataset", data: { label: "Dataset", icon: Database, category: "data", description: "Data source" } },
         { label: "Data Filter", data: { label: "Data Filter", icon: Filter, category: "data", description: "Filter by criteria" } },
+        { label: "Append Column", data: { label: "Append Column", icon: TableProperties, category: "data", description: "Add predictions as new column" } },
+        { label: "Conditional", data: { label: "Conditional", icon: GitFork, category: "data", description: "Route by condition" } },
+        { label: "Script", data: { label: "Script", icon: Code, category: "data", description: "Custom Python/TS transform" } },
       ],
     },
     {
@@ -168,27 +177,39 @@
       data: { label: "Weak Supervision", description: "5 LFs active, 2 abstain", icon: Tags, category: "labeling", status: "idle" },
     },
     {
+      id: "conditional",
+      type: "pipeline",
+      position: { x: 580, y: 450 },
+      data: { label: "Conditional", description: "confidence > 0.8 → TrOCR, else → Weak Supervision", icon: GitFork, category: "data", status: "active" },
+    },
+    {
+      id: "append-column",
+      type: "pipeline",
+      position: { x: 880, y: 420 },
+      data: { label: "Append Column", description: "Add predicted_label to dataset", icon: TableProperties, category: "data", status: "idle" },
+    },
+    {
       id: "ml-backend",
       type: "pipeline",
-      position: { x: 880, y: 140 },
+      position: { x: 1060, y: 140 },
       data: { label: "ML Backend", description: "Fine-tune, GPU A100", icon: Zap, category: "ml", status: "idle" },
     },
     {
       id: "ai-judge",
       type: "pipeline",
-      position: { x: 880, y: 280 },
+      position: { x: 1060, y: 280 },
       data: { label: "AI Judge", description: "GPT-4o, threshold 0.85", icon: Bot, category: "evaluation", status: "idle" },
     },
     {
       id: "eval-metrics",
       type: "pipeline",
-      position: { x: 1160, y: 140 },
+      position: { x: 1340, y: 140 },
       data: { label: "Evaluation Metrics", description: "Precision, recall, F1", icon: BarChart3, category: "evaluation", status: "idle" },
     },
     {
       id: "export",
       type: "pipeline",
-      position: { x: 1160, y: 280 },
+      position: { x: 1340, y: 280 },
       data: { label: "Export Pipeline", description: "Arrow IPC / COCO / ALTO XML", icon: FileOutput, category: "output", status: "idle" },
     },
   ]);
@@ -215,6 +236,14 @@
     { id: "e-judge-eval", source: "ai-judge", target: "eval-metrics" },
     { id: "e-judge-export", source: "ai-judge", target: "export" },
     { id: "e-eval-export", source: "eval-metrics", target: "export" },
+    // Conditional routing
+    { id: "e-st-cond", source: "stratified", target: "conditional" },
+    { id: "e-cond-trocr", source: "conditional", target: "ai-labeler-trocr" },
+    { id: "e-cond-ws", source: "conditional", target: "weak-supervision" },
+    // Append column back to dataset
+    { id: "e-trocr-append", source: "ai-labeler-trocr", target: "append-column" },
+    { id: "e-layout-append", source: "ai-labeler-layout", target: "append-column" },
+    { id: "e-append-ds", source: "append-column", target: "dataset" },
   ]);
 
   function onconnect(event: { source: string; target: string }) {
@@ -223,6 +252,144 @@
       { id: `e-${event.source}-${event.target}`, source: event.source, target: event.target },
     ];
   }
+
+  // Node config panel
+  let selectedNodeId = $state<string | null>(null);
+  const selectedNode = $derived(nodes.find((n) => n.id === selectedNodeId));
+
+  function onnodeclick(event: { node: PipelineNodeType }) {
+    selectedNodeId = event.node.id;
+  }
+
+  function onpaneclick() {
+    selectedNodeId = null;
+  }
+
+  // Config field definitions per node label
+  type ConfigField = { key: string; label: string; type: "text" | "number" | "select" | "toggle" | "range"; options?: string[]; value: string | number | boolean; description?: string };
+
+  const nodeConfigs: Record<string, ConfigField[]> = {
+    "Dataset": [
+      { key: "source", label: "Source", type: "select", options: ["mock-dataset-001", "riksarkivet-htr", "census-1900"], value: "mock-dataset-001" },
+      { key: "format", label: "Format", type: "select", options: ["Arrow IPC", "Parquet", "CSV", "LanceDB"], value: "Arrow IPC" },
+      { key: "cache", label: "Cache locally", type: "toggle", value: true },
+    ],
+    "Append Column": [
+      { key: "columnName", label: "Column name", type: "text", value: "predicted_label", description: "Name of the new column to add" },
+      { key: "source", label: "Value source", type: "select", options: ["upstream_prediction", "constant", "expression"], value: "upstream_prediction" },
+      { key: "overwrite", label: "Overwrite if exists", type: "toggle", value: false },
+    ],
+    "Conditional": [
+      { key: "condition", label: "Condition", type: "text", value: "confidence > 0.8", description: "Expression to evaluate per row" },
+      { key: "trueLabel", label: "True → output", type: "text", value: "high_confidence" },
+      { key: "falseLabel", label: "False → output", type: "text", value: "low_confidence" },
+    ],
+    "Script": [
+      { key: "language", label: "Language", type: "select", options: ["Python", "TypeScript", "SQL"], value: "Python" },
+      { key: "code", label: "Script", type: "text", value: "df['combined'] = df['trocr'] + df['layout']", description: "Custom transform code" },
+      { key: "timeout", label: "Timeout (s)", type: "number", value: 300 },
+    ],
+    "Data Filter": [
+      { key: "column", label: "Filter column", type: "select", options: ["status", "label", "doc_type", "confidence"], value: "status" },
+      { key: "operator", label: "Operator", type: "select", options: ["equals", "not equals", "in", "greater than", "less than"], value: "equals" },
+      { key: "filterValue", label: "Value", type: "text", value: "accepted" },
+    ],
+    "Active Learning": [
+      { key: "strategy", label: "Strategy", type: "select", options: ["uncertainty", "margin", "entropy", "random", "diversity"], value: "uncertainty", description: "How to select the most informative samples" },
+      { key: "batchSize", label: "Batch size", type: "number", value: 20 },
+      { key: "model", label: "Model", type: "text", value: "trocr-v2-riksarkivet" },
+      { key: "minConfidence", label: "Min confidence", type: "range", value: 0.3 },
+    ],
+    "Stratified Sampler": [
+      { key: "stratifyBy", label: "Stratify by", type: "select", options: ["doc_type", "status", "label", "source"], value: "doc_type" },
+      { key: "sampleSize", label: "Sample size", type: "number", value: 50 },
+      { key: "balanced", label: "Force balanced", type: "toggle", value: true },
+    ],
+    "Random Sample": [
+      { key: "n", label: "Sample size", type: "number", value: 50 },
+      { key: "seed", label: "Random seed", type: "number", value: 42 },
+      { key: "replacement", label: "With replacement", type: "toggle", value: false },
+    ],
+    "AI Labeler": [
+      { key: "model", label: "Model", type: "select", options: ["trocr-v2-riksarkivet", "dit-base-finetuned", "layoutlmv3", "custom"], value: "trocr-v2-riksarkivet" },
+      { key: "confidence", label: "Min confidence", type: "range", value: 0.5 },
+      { key: "batchSize", label: "Batch size", type: "number", value: 32 },
+      { key: "gpu", label: "GPU", type: "select", options: ["auto", "A100", "T4", "CPU"], value: "auto" },
+    ],
+    "AI Labeler: TrOCR": [
+      { key: "model", label: "Model", type: "text", value: "trocr-v2-riksarkivet", description: "HuggingFace model ID" },
+      { key: "confidence", label: "Min confidence", type: "range", value: 0.5 },
+      { key: "batchSize", label: "Batch size", type: "number", value: 32 },
+      { key: "gpu", label: "GPU", type: "select", options: ["auto", "A100", "T4", "CPU"], value: "auto" },
+    ],
+    "AI Labeler: Layout": [
+      { key: "model", label: "Model", type: "text", value: "dit-base-finetuned", description: "Layout analysis model" },
+      { key: "labels", label: "Labels", type: "text", value: "text-line,paragraph,header,marginal-note" },
+      { key: "nmsThreshold", label: "NMS threshold", type: "range", value: 0.5 },
+    ],
+    "Weak Supervision": [
+      { key: "lfCount", label: "Labeling functions", type: "number", value: 5 },
+      { key: "resolver", label: "Conflict resolver", type: "select", options: ["majority_vote", "snorkel_label_model", "dawid_skene", "weighted"], value: "majority_vote" },
+      { key: "minCoverage", label: "Min coverage", type: "range", value: 0.3 },
+      { key: "abstainThreshold", label: "Abstain threshold", type: "range", value: 0.1 },
+    ],
+    "Human Review": [
+      { key: "assignees", label: "Assignees", type: "text", value: "team-annotators", description: "User group or comma-separated usernames" },
+      { key: "redundancy", label: "Annotators per item", type: "number", value: 2 },
+      { key: "deadline", label: "Deadline (days)", type: "number", value: 7 },
+    ],
+    "ML Backend": [
+      { key: "framework", label: "Framework", type: "select", options: ["PyTorch", "JAX", "TensorFlow", "ONNX"], value: "PyTorch" },
+      { key: "epochs", label: "Epochs", type: "number", value: 10 },
+      { key: "lr", label: "Learning rate", type: "text", value: "3e-5" },
+      { key: "gpu", label: "GPU", type: "select", options: ["A100", "H100", "T4", "CPU"], value: "A100" },
+      { key: "checkpoint", label: "Save checkpoints", type: "toggle", value: true },
+    ],
+    "Embedding Model": [
+      { key: "model", label: "Model", type: "select", options: ["all-MiniLM-L6-v2", "intfloat/e5-large", "BAAI/bge-base", "custom"], value: "all-MiniLM-L6-v2" },
+      { key: "dims", label: "Dimensions", type: "number", value: 384 },
+      { key: "normalize", label: "L2 normalize", type: "toggle", value: true },
+    ],
+    "AI Judge": [
+      { key: "model", label: "Judge model", type: "select", options: ["GPT-4o", "Claude 3.5", "Gemini Pro", "local-llama"], value: "GPT-4o" },
+      { key: "threshold", label: "Agreement threshold", type: "range", value: 0.85 },
+      { key: "criteria", label: "Criteria", type: "text", value: "accuracy,completeness,consistency" },
+      { key: "maxTokens", label: "Max tokens", type: "number", value: 1024 },
+    ],
+    "Evaluation Metrics": [
+      { key: "metrics", label: "Metrics", type: "text", value: "precision,recall,f1,accuracy", description: "Comma-separated metric names" },
+      { key: "average", label: "Averaging", type: "select", options: ["micro", "macro", "weighted", "binary"], value: "macro" },
+      { key: "bootstrap", label: "Bootstrap CI", type: "toggle", value: false },
+    ],
+    "Consensus": [
+      { key: "method", label: "Method", type: "select", options: ["fleiss_kappa", "cohen_kappa", "krippendorff_alpha", "percent_agreement"], value: "fleiss_kappa" },
+      { key: "minAnnotators", label: "Min annotators", type: "number", value: 2 },
+      { key: "threshold", label: "Agreement threshold", type: "range", value: 0.7 },
+    ],
+    "Export Pipeline": [
+      { key: "format", label: "Format", type: "select", options: ["Arrow IPC", "COCO JSON", "ALTO XML", "Parquet", "CSV"], value: "Arrow IPC" },
+      { key: "destination", label: "Destination", type: "select", options: ["local", "S3", "MinIO", "GCS"], value: "local" },
+      { key: "path", label: "Output path", type: "text", value: "/output/export" },
+      { key: "compress", label: "Compress", type: "toggle", value: true },
+    ],
+    "Webhook": [
+      { key: "url", label: "URL", type: "text", value: "https://hooks.example.com/pipeline" },
+      { key: "method", label: "Method", type: "select", options: ["POST", "PUT", "PATCH"], value: "POST" },
+      { key: "events", label: "Events", type: "text", value: "completed,failed" },
+    ],
+    "Eval Metrics": [
+      { key: "metrics", label: "Metrics", type: "text", value: "precision,recall,f1" },
+      { key: "average", label: "Averaging", type: "select", options: ["micro", "macro", "weighted"], value: "macro" },
+    ],
+    "Export": [
+      { key: "format", label: "Format", type: "select", options: ["Arrow IPC", "COCO JSON", "ALTO XML", "Parquet"], value: "Arrow IPC" },
+      { key: "destination", label: "Destination", type: "select", options: ["local", "S3", "MinIO"], value: "local" },
+    ],
+  };
+
+  const selectedConfig = $derived(
+    selectedNode ? (nodeConfigs[selectedNode.data.label] ?? []) : [],
+  );
 </script>
 
 <div class="flex h-full">
@@ -315,6 +482,8 @@
       {nodeTypes}
       {defaultEdgeOptions}
       {onconnect}
+      {onnodeclick}
+      {onpaneclick}
       fitView
       proOptions={{ hideAttribution: true }}
       class="bg-background"
@@ -350,4 +519,111 @@
       </Panel>
     </SvelteFlow>
   </div>
+
+  <!-- Node config panel (right sidebar) -->
+  {#if selectedNode}
+    <div class="flex h-full w-72 flex-col border-l bg-background">
+      <div class="flex items-center gap-2 border-b px-3 py-2">
+        {#if selectedNode.data.icon}
+          {@const Icon = selectedNode.data.icon}
+          <Icon class="h-4 w-4 text-muted-foreground" />
+        {/if}
+        <span class="text-sm font-medium">{selectedNode.data.label}</span>
+        <button class="ml-auto text-muted-foreground hover:text-foreground" onclick={() => (selectedNodeId = null)}>
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3">
+        {#if selectedNode.data.description}
+          <p class="mb-3 text-xs text-muted-foreground">{selectedNode.data.description}</p>
+        {/if}
+
+        <!-- Status -->
+        <div class="mb-4">
+          <label class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Status</label>
+          <select class="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none">
+            <option selected={selectedNode.data.status === "idle"}>idle</option>
+            <option selected={selectedNode.data.status === "active"}>active</option>
+            <option selected={selectedNode.data.status === "running"}>running</option>
+            <option selected={selectedNode.data.status === "error"}>error</option>
+          </select>
+        </div>
+
+        <Separator class="mb-4" />
+
+        <!-- Config fields -->
+        {#each selectedConfig as field (field.key)}
+          <div class="mb-3">
+            <label class="mb-1 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{field.label}</label>
+            {#if field.description}
+              <p class="mb-1 text-[9px] text-muted-foreground">{field.description}</p>
+            {/if}
+
+            {#if field.type === "text"}
+              <input
+                type="text"
+                class="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+                value={field.value}
+              />
+            {:else if field.type === "number"}
+              <input
+                type="number"
+                class="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+                value={field.value}
+              />
+            {:else if field.type === "select"}
+              <select class="w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none">
+                {#each field.options ?? [] as opt (opt)}
+                  <option selected={opt === field.value}>{opt}</option>
+                {/each}
+              </select>
+            {:else if field.type === "toggle"}
+              <button
+                class="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs {field.value ? 'bg-primary/10 border-primary/30' : ''}"
+              >
+                <span class="flex h-4 w-8 rounded-full {field.value ? 'bg-primary' : 'bg-muted'}">
+                  <span class="h-4 w-4 rounded-full bg-background shadow-sm transition-transform {field.value ? 'translate-x-4' : 'translate-x-0'}"></span>
+                </span>
+                <span>{field.value ? "Enabled" : "Disabled"}</span>
+              </button>
+            {:else if field.type === "range"}
+              <div class="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={field.value}
+                  class="h-1.5 flex-1 appearance-none rounded bg-muted accent-primary"
+                />
+                <span class="w-8 text-right text-xs tabular-nums text-muted-foreground">{field.value}</span>
+              </div>
+            {/if}
+          </div>
+        {/each}
+
+        {#if selectedConfig.length === 0}
+          <p class="text-xs text-muted-foreground">No configuration available for this node type.</p>
+        {/if}
+      </div>
+
+      <!-- Node actions -->
+      <div class="border-t p-3">
+        <div class="flex gap-1.5">
+          <Button variant="outline" size="sm" class="flex-1 gap-1 text-xs" disabled>
+            <Copy class="h-3 w-3" />
+            Duplicate
+          </Button>
+          <Button variant="outline" size="sm" class="gap-1 text-xs text-destructive hover:bg-destructive/10" onclick={() => {
+            nodes = nodes.filter((n) => n.id !== selectedNodeId);
+            edges = edges.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId);
+            selectedNodeId = null;
+          }}>
+            <Trash2 class="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
