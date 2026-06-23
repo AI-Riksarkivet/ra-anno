@@ -1,4 +1,5 @@
 import { error } from "@sveltejs/kit";
+import { readFile, writeFile } from "node:fs/promises";
 import type { RequestHandler } from "./$types";
 
 const MOCK_DIR = "static/mock";
@@ -28,7 +29,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
   let ipc: Uint8Array;
   try {
-    ipc = await Deno.readFile(path);
+    ipc = await readFile(path);
   } catch {
     error(404, `No annotations for page: ${params.pageId}`);
   }
@@ -76,11 +77,11 @@ export const POST: RequestHandler = async ({ request, params }) => {
   const path = `${MOCK_DIR}/${params.pageId}.arrow`;
 
   // Persist the full table
-  await Deno.writeFile(path, body);
+  await writeFile(path, body);
   const newVersion = bumpVersion(params.pageId);
 
   // Return the saved data back
-  const saved = await Deno.readFile(path);
+  const saved = await readFile(path);
   return new Response(saved as unknown as BodyInit, {
     headers: {
       "Content-Type": "application/vnd.apache.arrow.stream",
@@ -98,7 +99,7 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
   const currentETag = versionETag(params.pageId);
   if (ifMatch && ifMatch !== currentETag) {
     // Conflict: client's data is stale
-    const currentData = await Deno.readFile(path);
+    const currentData = await readFile(path);
     return new Response(currentData as unknown as BodyInit, {
       status: 409,
       headers: {
@@ -111,7 +112,7 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
   // Read existing data
   let existingBytes: Uint8Array;
   try {
-    existingBytes = await Deno.readFile(path);
+    existingBytes = await readFile(path);
   } catch {
     error(404, `No annotations for page: ${params.pageId}`);
   }
@@ -252,7 +253,7 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
 
   // Write merged result
   const resultIpc = tableToIPC(working, "stream");
-  await Deno.writeFile(path, resultIpc);
+  await writeFile(path, resultIpc);
   const newVersion = bumpVersion(params.pageId);
 
   return new Response(resultIpc as unknown as BodyInit, {

@@ -1,2 +1,2 @@
-// @xyflow/svelte uses directory imports not supported by Deno SSR
+// @xyflow/svelte (Svelte Flow) is client-only — disable SSR
 export const ssr = false;

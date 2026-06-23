@@ -75,12 +75,18 @@ export function handleIdToString(id: HandleId): string {
 // --- Shapes ---
 
 export interface CommitShape {
-  type: "rect" | "polygon";
+  type: "rect" | "rotation" | "polygon" | "baseline" | "line" | "point" | "mask";
   x: number;
   y: number;
   width: number;
   height: number;
   polygon: number[] | null;
+  /** Oriented-box angle in radians (only for type "rotation"). */
+  rotation?: number;
+  /** base64 PNG data URL of the painted region (only for type "mask"). */
+  mask?: string;
+  /** How a committed mask is merged: independent ("instance") vs one-class-per-pixel ("semantic"). */
+  maskMode?: "instance" | "semantic";
 }
 
 export interface GeometryUpdate {

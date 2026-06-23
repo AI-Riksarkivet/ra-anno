@@ -8,6 +8,10 @@ import { PolygonTool } from "../tools/PolygonTool.js";
 import { RectTool } from "../tools/RectTool.js";
 import { ScissorsTool } from "../tools/ScissorsTool.js";
 import { LassoTool } from "../tools/LassoTool.js";
+import { PencilTool } from "../tools/PencilTool.js";
+import { PointTool } from "../tools/PointTool.js";
+import { LineTool } from "../tools/LineTool.js";
+import { BrushTool } from "../tools/BrushTool.js";
 import { isAxisAlignedRect } from "./geometry.js";
 import {
   type CommitShape,
@@ -25,6 +29,7 @@ export class InteractionManager {
   private tools = new Map<string, Tool>();
   private activeTool: Tool | null = null;
   private _toolName: ToolType = "select";
+  private brushTool!: BrushTool;
 
   private rectEditor: RectEditor;
   private polygonEditor: PolygonEditor;
@@ -73,6 +78,22 @@ export class InteractionManager {
     const magneticTool = new MagneticTool(ctx);
     magneticTool.onCommit = (shape) => this.onCommit?.(shape);
     this.tools.set("magnetic", magneticTool);
+
+    const pencilTool = new PencilTool(ctx);
+    pencilTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("pencil", pencilTool);
+
+    const pointTool = new PointTool(ctx);
+    pointTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("point", pointTool);
+
+    const lineTool = new LineTool(ctx);
+    lineTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("line", lineTool);
+
+    this.brushTool = new BrushTool(ctx);
+    this.brushTool.onCommit = (shape) => this.onCommit?.(shape);
+    this.tools.set("brush", this.brushTool);
 
     const lassoTool = new LassoTool(ctx, arrowPlugin);
     lassoTool.onLassoComplete = (indices) => {
@@ -123,6 +144,21 @@ export class InteractionManager {
       this.activeEditor?.detach();
       this.activeEditor = null;
     }
+  }
+
+  /** Set Brush tool options (radius, eraser, mask mode, vector/raster output). */
+  setBrushOptions(
+    opts: {
+      radius?: number;
+      erasing?: boolean;
+      maskMode?: "instance" | "semantic";
+      output?: "mask" | "polygon";
+    },
+  ): void {
+    if (opts.radius !== undefined) this.brushTool.radius = opts.radius;
+    if (opts.erasing !== undefined) this.brushTool.erasing = opts.erasing;
+    if (opts.maskMode !== undefined) this.brushTool.maskMode = opts.maskMode;
+    if (opts.output !== undefined) this.brushTool.output = opts.output;
   }
 
   /** Update modifier key state — called by the page component's keyboard handler */

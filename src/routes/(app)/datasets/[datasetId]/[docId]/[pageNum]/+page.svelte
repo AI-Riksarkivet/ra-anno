@@ -9,6 +9,7 @@
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
   import { statusColor } from "$lib/utils/color.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
+  import { unionMasks } from "$lib/pixi/maskOps.js";
   import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import { setContext, untrack } from "svelte";
   import { goto } from "$app/navigation";
@@ -109,14 +110,16 @@
     await Promise.all([loadImage, loadAnnotations]);
 
     // Drawing tool commits → append to Arrow store, auto-select the new shape
-    ctx.plugins.interaction.onCommit = (shape) => {
-      const updated = annotationStore.appendLocal(pageId, {
+    ctx.plugins.interaction.onCommit = async (shape) => {
+      const makeRow = (over: Record<string, unknown> = {}) => ({
         id: crypto.randomUUID(),
         page_id: pageId,
+        shape_type: shape.type === "rect" ? "rectangle" : shape.type,
         x: shape.x,
         y: shape.y,
         width: shape.width,
         height: shape.height,
+        rotation: shape.rotation ?? 0,
         polygon: shape.polygon,
         text: "",
         label: "",
@@ -125,17 +128,91 @@
         status: "draft",
         reviewer: "",
         group: "",
+        group_id: "",
+        reading_order: -1,
+        difficult: false,
+        links: "[]",
+        mask: shape.mask ?? "",
         metadata: "{}",
+        ...over,
       });
 
-      // Auto-switch to Select and select the new annotation
-      if (updated) {
+      // Auto-switch to Select and select the new (last) annotation
+      const selectNew = (t: { numRows: number } | null) => {
+        if (!t) return;
         activeTool = "select";
         ctx.plugins.interaction.setTool("select");
-        const newIndex = updated.numRows - 1;
+        const newIndex = t.numRows - 1;
         selectedIndex = newIndex;
         ctx.plugins.interaction.select(newIndex);
+      };
+
+      // Semantic masking: one class per pixel — union the new stroke into the
+      // existing same-label mask on this page instead of creating a new one.
+      // NOTE: cross-label pixel-exclusivity (subtracting the painted pixels
+      // from OTHER-label masks) is deferred — see task #6. Any failure falls
+      // back to a plain append.
+      if (shape.type === "mask" && shape.maskMode === "semantic" && shape.mask) {
+        try {
+          const t = untrack(() => annotationStore.table(pageId));
+          if (t) {
+            const st = t.getChild("shape_type");
+            const lab = t.getChild("label");
+            const mk = t.getChild("mask");
+            const xc = t.getChild("x");
+            const yc = t.getChild("y");
+            const wc = t.getChild("width");
+            const hc = t.getChild("height");
+            const newLabel = ""; // fresh strokes are unlabeled until assigned
+            let idx = -1;
+            for (let i = 0; i < t.numRows; i++) {
+              if (String(st?.get(i) ?? "") !== "mask") continue;
+              if (String(lab?.get(i) ?? "") !== newLabel) continue;
+              if (!String(mk?.get(i) ?? "")) continue;
+              idx = i;
+              break;
+            }
+            if (idx >= 0) {
+              const merged = await unionMasks(
+                {
+                  x: Number(xc?.get(idx) ?? 0),
+                  y: Number(yc?.get(idx) ?? 0),
+                  width: Number(wc?.get(idx) ?? 0),
+                  height: Number(hc?.get(idx) ?? 0),
+                  mask: String(mk?.get(idx) ?? ""),
+                },
+                {
+                  x: shape.x,
+                  y: shape.y,
+                  width: shape.width,
+                  height: shape.height,
+                  mask: shape.mask,
+                },
+              );
+              annotationStore.deleteLocal(pageId, idx);
+              selectNew(
+                annotationStore.appendLocal(
+                  pageId,
+                  makeRow({
+                    shape_type: "mask",
+                    x: merged.x,
+                    y: merged.y,
+                    width: merged.width,
+                    height: merged.height,
+                    polygon: null,
+                    mask: merged.mask,
+                  }),
+                ),
+              );
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("semantic mask merge failed; appending instead", e);
+        }
       }
+
+      selectNew(annotationStore.appendLocal(pageId, makeRow()));
     };
 
     // Selection changes (single or multi via Ctrl+Click / lasso)
@@ -170,6 +247,14 @@
   function handleToolChange(tool: Tool) {
     activeTool = tool;
     pixiCtx?.plugins.interaction.setTool(tool);
+  }
+
+  function handleBrushOptions(opts: {
+    output?: "mask" | "polygon";
+    maskMode?: "instance" | "semantic";
+    erasing?: boolean;
+  }) {
+    pixiCtx?.plugins.interaction.setBrushOptions(opts);
   }
 
   const currentPageIndex = $derived(data.pages.findIndex((p: { page_num: number }) => p.page_num === data.pageNum));
@@ -321,6 +406,10 @@
       if (e.key === "3") handleToolChange("polygon");
       if (e.key === "4") handleToolChange("scissors");
       if (e.key === "5") handleToolChange("magnetic");
+      if (e.key === "7") handleToolChange("pencil");
+      if (e.key === "8") handleToolChange("point");
+      if (e.key === "9") handleToolChange("line");
+      if (e.key === "b" || e.key === "B") handleToolChange("brush");
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
       e.preventDefault();
@@ -381,6 +470,7 @@
     onToggleGallery={() => (galleryOpen = !galleryOpen)}
     splitOpen={false}
     onToggleSplit={() => { /* TODO: native Pixi split view */ }}
+    onBrushOptions={handleBrushOptions}
   />
 
   <!-- Center + Right: resizable -->

@@ -1,4 +1,5 @@
 import { error } from "@sveltejs/kit";
+import { readFile } from "node:fs/promises";
 import type { RequestHandler } from "./$types";
 
 const MOCK_DIR = "static/mock";
@@ -15,7 +16,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
   let bytes: Uint8Array;
   try {
-    bytes = await Deno.readFile(`${MOCK_DIR}/${entry.file}`);
+    bytes = await readFile(`${MOCK_DIR}/${entry.file}`);
   } catch {
     error(404, `Image file not found: ${entry.file}`);
   }

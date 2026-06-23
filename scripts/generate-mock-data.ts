@@ -6,6 +6,7 @@ import {
   tableToIPC,
   vectorFromArray,
 } from "apache-arrow";
+import { mkdir, writeFile } from "node:fs/promises";
 
 const TOTAL_PAGES = 120;
 const PAGES_PER_DOC = 24;
@@ -40,12 +41,8 @@ const LABEL_SUB_OFFSETS: Record<string, [number, number]> = {
 
 const EMBEDDING_DIM = 128;
 
-// Ensure output directory exists
-try {
-  await Deno.stat("static/mock");
-} catch {
-  await Deno.mkdir("static/mock", { recursive: true });
-}
+// Ensure output directory exists (mkdir recursive is idempotent)
+await mkdir("static/mock", { recursive: true });
 
 // Seeded pseudo-random for deterministic but varied output
 function seededRandom(seed: number) {
@@ -170,10 +167,12 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
   // Build annotation data for this page
   const ids: string[] = [];
   const pageIds: string[] = [];
+  const shapeTypes: string[] = [];
   const xs = new Float32Array(numRows);
   const ys = new Float32Array(numRows);
   const widths = new Float32Array(numRows);
   const heights = new Float32Array(numRows);
+  const rotations = new Float32Array(numRows);
   const polygons: (number[] | null)[] = [];
   const texts: string[] = [];
   const labels: string[] = [];
@@ -181,6 +180,10 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
   const sources: string[] = [];
   const reviewers: string[] = [];
   const groups: string[] = [];
+  const groupIds: string[] = [];
+  const readingOrders = new Int32Array(numRows);
+  const difficults: boolean[] = [];
+  const linksArr: string[] = [];
   const metadatas: string[] = [];
   const statuses: string[] = [];
 
@@ -198,17 +201,49 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     widths[i] = w;
     heights[i] = h;
 
-    // Polygon vertices
-    const numVerts = [4, 4, 6, 8][i % 4];
-    const verts: number[] = [];
     const cx = x + w / 2;
     const cy = y + h / 2;
     const rx = w / 2;
     const ry = h / 2;
 
-    if (numVerts === 4 && i % 2 === 0) {
-      verts.push(x, y, x + w, y, x + w, y + h, x, y + h);
+    // Shape type + geometry: mostly rect/polygon, with a few oriented boxes
+    // and baselines to exercise the new fields.
+    const verts: number[] = [];
+    let shapeType: string;
+    let rotation = 0;
+
+    if (i % 11 === 0) {
+      // baseline: open polyline near the text-line bottom (HTR line unit)
+      shapeType = "baseline";
+      verts.push(x, y + h, x + w * 0.5, y + h - 2, x + w, y + h);
+    } else if (i % 2 === 0) {
+      // 4-corner box, sometimes oriented
+      if (i % 7 === 0) {
+        shapeType = "rotation";
+        rotation = (((i * 13) % 30) - 15) * (Math.PI / 180); // ±15°
+        // bake the rotated corners so it renders correctly before the editor supports rot
+        const corners: [number, number][] = [
+          [x, y],
+          [x + w, y],
+          [x + w, y + h],
+          [x, y + h],
+        ];
+        for (const [px, py] of corners) {
+          const dx = px - cx;
+          const dy = py - cy;
+          verts.push(
+            cx + dx * Math.cos(rotation) - dy * Math.sin(rotation),
+            cy + dx * Math.sin(rotation) + dy * Math.cos(rotation),
+          );
+        }
+      } else {
+        shapeType = "rectangle";
+        verts.push(x, y, x + w, y, x + w, y + h, x, y + h);
+      }
     } else {
+      // irregular closed polygon
+      shapeType = "polygon";
+      const numVerts = 6;
       for (let v = 0; v < numVerts; v++) {
         const angle = (v / numVerts) * Math.PI * 2;
         const jx = ((i * 17 + v * 31) % 16) - 8;
@@ -218,6 +253,8 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
       }
     }
     polygons.push(verts);
+    shapeTypes.push(shapeType);
+    rotations[i] = rotation;
 
     texts.push(`Line ${i + 1}: Text from ${docId} page ${pageNum}`);
     labels.push(LABELS[i % LABELS.length]);
@@ -226,16 +263,35 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     statuses.push(STATUSES[(i + p) % STATUSES.length]);
     reviewers.push("");
     groups.push(GROUPS[i % GROUPS.length]);
+    // group_id: bundle ~5 consecutive annotations into a "region" (lines → block)
+    groupIds.push(`${pageId}-block-${String(Math.floor(i / 5)).padStart(2, "0")}`);
+    difficults.push(i % 13 === 0); // a few flagged ambiguous
+    // links: occasionally point to the previous annotation (e.g. reading order / key-value)
+    linksArr.push(
+      i > 0 && i % 6 === 0
+        ? JSON.stringify([{ to: ids[i - 1], type: "reading-next" }])
+        : "[]",
+    );
     metadatas.push("{}");
   }
+
+  // reading_order: rank top-to-bottom (then left-to-right) within the page
+  const orderRanking = Array.from({ length: numRows }, (_, i) => i).sort(
+    (a, b) => ys[a] - ys[b] || xs[a] - xs[b],
+  );
+  orderRanking.forEach((rowIdx, rank) => {
+    readingOrders[rowIdx] = rank;
+  });
 
   const annTable = tableFromArrays({
     id: ids,
     page_id: pageIds,
+    shape_type: shapeTypes,
     x: xs,
     y: ys,
     width: widths,
     height: heights,
+    rotation: rotations,
     polygon: polygons,
     text: texts,
     label: labels,
@@ -244,6 +300,11 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     status: statuses,
     reviewer: reviewers,
     group: groups,
+    group_id: groupIds,
+    reading_order: readingOrders,
+    difficult: difficults,
+    links: linksArr,
+    mask: new Array(numRows).fill(""),
     metadata: metadatas,
   });
 
@@ -263,7 +324,7 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
   const schemaWithMeta = new Schema(annTable.schema.fields, meta);
   const tableWithMeta = new Table(schemaWithMeta, annTable.batches);
 
-  await Deno.writeFile(
+  await writeFile(
     `static/mock/${pageId}.arrow`,
     tableToIPC(tableWithMeta, "stream"),
   );
@@ -318,7 +379,7 @@ for (let p = 0; p < TOTAL_PAGES; p++) {
     umap_x: scalarTable.getChild("umap_x")!,
     umap_y: scalarTable.getChild("umap_y")!,
   });
-  await Deno.writeFile(
+  await writeFile(
     `static/mock/${pageId}.page.arrow`,
     tableToIPC(pageTable, "stream"),
   );

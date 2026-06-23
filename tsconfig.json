@@ -9,6 +9,7 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "sourceMap": true,
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true
   }
 }

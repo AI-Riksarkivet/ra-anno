@@ -117,6 +117,66 @@ export function pointInPolygon(
   return inside;
 }
 
+/** Perpendicular distance from point p to the line through a→b. */
+function perpDistance(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2);
+  return Math.abs(dy * px - dx * py + bx * ay - by * ax) / len;
+}
+
+/**
+ * Douglas–Peucker simplification of a flat path [x0,y0,x1,y1,...].
+ * Higher `tolerance` → fewer vertices (simpler). Endpoints are always kept.
+ * Used by the Pencil tool's "simple ↔ complex" knob.
+ */
+export function simplifyPath(
+  flat: ArrayLike<number>,
+  tolerance: number,
+): number[] {
+  const n = flat.length >> 1;
+  if (n <= 2) return Array.from(flat);
+
+  const keep = new Uint8Array(n);
+  keep[0] = 1;
+  keep[n - 1] = 1;
+
+  // Iterative DP over an explicit stack of [startIdx, endIdx] segments.
+  const stack: [number, number][] = [[0, n - 1]];
+  while (stack.length > 0) {
+    const [first, last] = stack.pop()!;
+    let maxDist = 0;
+    let maxIdx = -1;
+    const ax = flat[first * 2], ay = flat[first * 2 + 1];
+    const bx = flat[last * 2], by = flat[last * 2 + 1];
+    for (let i = first + 1; i < last; i++) {
+      const d = perpDistance(flat[i * 2], flat[i * 2 + 1], ax, ay, bx, by);
+      if (d > maxDist) {
+        maxDist = d;
+        maxIdx = i;
+      }
+    }
+    if (maxDist > tolerance && maxIdx !== -1) {
+      keep[maxIdx] = 1;
+      stack.push([first, maxIdx], [maxIdx, last]);
+    }
+  }
+
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (keep[i]) out.push(flat[i * 2], flat[i * 2 + 1]);
+  }
+  return out;
+}
+
 /** Resize a rect by dragging a named handle. Returns new geometry. */
 export function resizeByHandle(
   x: number,
@@ -242,4 +302,73 @@ export function hitTestHandles(
     }
   }
   return null;
+}
+
+/**
+ * Trace the outer boundary of the largest opaque blob in an RGBA pixel buffer
+ * (Moore-neighbour boundary tracing). Returns a flat [x0,y0,x1,y1,...] contour
+ * in buffer-local pixel coords, or [] if nothing is opaque. Pure — no DOM.
+ * Used to vectorize a brush mask into a polygon (pair with simplifyPath).
+ */
+export function traceMaskContour(
+  rgba: ArrayLike<number>,
+  w: number,
+  h: number,
+  alphaThreshold = 128,
+): number[] {
+  const at = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < w && y < h &&
+    Number(rgba[(y * w + x) * 4 + 3]) >= alphaThreshold;
+
+  // Top-most, then left-most opaque pixel = start of the outer boundary.
+  let sx = -1, sy = -1;
+  for (let y = 0; y < h && sy < 0; y++) {
+    for (let x = 0; x < w; x++) {
+      if (at(x, y)) {
+        sx = x;
+        sy = y;
+        break;
+      }
+    }
+  }
+  if (sx < 0) return [];
+
+  // 8-neighbour offsets, clockwise.
+  const N8 = [
+    [-1, 0],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [-1, 1],
+  ];
+
+  const out: number[] = [];
+  let cx = sx, cy = sy;
+  let backtrack = 0; // entered from the left (W)
+  const maxSteps = w * h * 4;
+  let steps = 0;
+
+  do {
+    out.push(cx, cy);
+    let found = false;
+    for (let k = 0; k < 8; k++) {
+      const dir = (backtrack + 1 + k) % 8;
+      const nx = cx + N8[dir][0];
+      const ny = cy + N8[dir][1];
+      if (at(nx, ny)) {
+        backtrack = (dir + 4) % 8; // point back from new pixel to current
+        cx = nx;
+        cy = ny;
+        found = true;
+        break;
+      }
+    }
+    if (!found) break; // isolated pixel
+    steps++;
+  } while ((cx !== sx || cy !== sy) && steps < maxSteps);
+
+  return out;
 }

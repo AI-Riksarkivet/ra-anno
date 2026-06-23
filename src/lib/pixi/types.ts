@@ -26,4 +26,8 @@ export type Tool =
   | "polygon"
   | "scissors"
   | "magnetic"
-  | "lasso";
+  | "lasso"
+  | "pencil"
+  | "point"
+  | "line"
+  | "brush";

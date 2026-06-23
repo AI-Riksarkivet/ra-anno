@@ -9,6 +9,7 @@ storybook-static/
 .claude/skills/building-pixijs/references/api-reference.md
 llms-full.txt
 anno/
+annotorious/
 .deno-deploy/
 arrow/docs/
 arrow-explain.md

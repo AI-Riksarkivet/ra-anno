@@ -1,4 +1,4 @@
-import { Application, Container, Graphics } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Table } from "apache-arrow";
 import type { ViewportBounds } from "./types.js";
 import { isAxisAlignedRect, pointInPolygon } from "./interaction/geometry.js";
@@ -77,6 +77,10 @@ export class ArrowDataPlugin {
   // Pixi-native: one Container per group → toggle .visible for instant show/hide
   private groupContainers = new Map<string, Container>();
 
+  // Raster mask overlay layer (rendered below vector annotations)
+  private maskContainer: Container;
+  private maskSprites = new Map<number, Sprite>();
+
   // Highlight layers (always on top)
   private highlightGraphics: Graphics;
   private hoverGraphics: Graphics;
@@ -94,6 +98,8 @@ export class ArrowDataPlugin {
   private hArr: Float32Array = new Float32Array(0);
   private polygonCache: (number[] | null)[] = []; // materialized once per table load
   private statusStr: string[] = []; // materialized once per table load
+  private shapeTypeStr: string[] = []; // materialized once per table load
+  private maskStr: string[] = []; // base64 mask data URLs, materialized once per load
 
   // ── Group-by column cache ──
   // Re-materialized when table OR groupByColumn changes.
@@ -137,6 +143,11 @@ export class ArrowDataPlugin {
     this.container.label = "annotations";
     this.container.cullable = true;
     app.stage.addChild(this.container);
+
+    // Mask overlay layer — added first so it renders BELOW vector annotations
+    this.maskContainer = new Container();
+    this.maskContainer.label = "masks";
+    this.container.addChild(this.maskContainer);
 
     this.hoverGraphics = new Graphics();
     this.hoverGraphics.label = "hover";
@@ -319,6 +330,21 @@ export class ArrowDataPlugin {
         this.statusStr[i] = String(statusCol?.get(i) ?? "prediction");
       }
 
+      // shape_type + mask columns (absent in older tables → "")
+      const shapeCol = table.getChild("shape_type")?.memoize();
+      const maskCol = table.getChild("mask")?.memoize();
+      this.shapeTypeStr = new Array(numRows);
+      this.maskStr = new Array(numRows);
+      for (let i = 0; i < numRows; i++) {
+        this.shapeTypeStr[i] = shapeCol ? String(shapeCol.get(i) ?? "") : "";
+        this.maskStr[i] = maskCol ? String(maskCol.get(i) ?? "") : "";
+      }
+
+      // Table changed — drop cached mask sprites; syncMasks() rebuilds them
+      for (const s of this.maskSprites.values()) s.destroy();
+      this.maskSprites.clear();
+      this.maskContainer.removeChildren();
+
       this.cachedGroupByCol = "";
     }
 
@@ -488,22 +514,84 @@ export class ArrowDataPlugin {
       }
     }
 
+    // ── Phase 6: Raster mask overlay sprites ──
+    this.syncMasks();
+
     this.highlightGraphics.clear();
     this.app.render();
   }
 
   /** Draw a single annotation shape into a Graphics object */
   private drawAnnotation(g: Graphics, i: number): void {
+    const st = this.shapeTypeStr[i];
+    if (st === "mask") return; // drawn by the mask overlay layer
+
     const override = this.dirtyOverrides.get(i);
     if (override) {
       g.poly(override.polygon, true);
+      return;
+    }
+
+    if (st === "point") {
+      const scale = this.app.stage.scale.x || 1;
+      g.circle(this.xArr[i], this.yArr[i], 4 / scale);
+      return;
+    }
+
+    const poly = this.getPolygonSlice(i);
+    if ((st === "line" || st === "baseline") && poly && poly.length >= 4) {
+      g.poly(poly, false); // OPEN polyline — do not close
+      return;
+    }
+
+    if (poly && poly.length >= 6) {
+      g.poly(poly, true);
     } else {
-      const poly = this.getPolygonSlice(i);
-      if (poly && poly.length >= 6) {
-        g.poly(poly, true);
-      } else {
-        g.rect(this.xArr[i], this.yArr[i], this.wArr[i], this.hArr[i]);
+      g.rect(this.xArr[i], this.yArr[i], this.wArr[i], this.hArr[i]);
+    }
+  }
+
+  /**
+   * Rebuild raster mask sprites for "mask" rows. Async texture decode from the
+   * base64 data URL; tinted by the row's color, positioned at its bbox.
+   */
+  private syncMasks(): void {
+    if (this.shapeTypeStr.length !== this.numRows) return;
+    for (let i = 0; i < this.numRows; i++) {
+      if (this.shapeTypeStr[i] !== "mask") continue;
+
+      const existing = this.maskSprites.get(i);
+      if (existing) {
+        existing.visible = !this.hiddenMask[i];
+        continue;
       }
+
+      const data = this.maskStr[i];
+      if (!data || !data.startsWith("data:")) continue;
+
+      const x = this.xArr[i], y = this.yArr[i];
+      const w = this.wArr[i], h = this.hArr[i];
+
+      // Placeholder sprite reserved synchronously to avoid duplicate loads
+      const sprite = new Sprite();
+      sprite.position.set(x, y);
+      sprite.alpha = 0.45;
+      sprite.tint = this.colorFn(this.statusStr[i]);
+      sprite.visible = !this.hiddenMask[i];
+      this.maskSprites.set(i, sprite);
+      this.maskContainer.addChild(sprite);
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          sprite.texture = Texture.from(img);
+          sprite.width = w;
+          sprite.height = h;
+          this.app.render();
+        } catch { /* texture decode failed — leave empty */ }
+      };
+      img.onerror = () => {};
+      img.src = data;
     }
   }
 

@@ -1,4 +1,5 @@
 import { error } from "@sveltejs/kit";
+import { readFile } from "node:fs/promises";
 import type { RequestHandler } from "./$types";
 
 const MOCK_DIR = "static/mock";
@@ -9,7 +10,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
   let ipc: Uint8Array;
   try {
-    ipc = await Deno.readFile(path);
+    ipc = await readFile(path);
   } catch {
     error(404, `No page data for: ${params.pageId}`);
   }

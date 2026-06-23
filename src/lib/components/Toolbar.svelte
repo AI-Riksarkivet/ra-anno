@@ -23,6 +23,10 @@
   import Sparkles from "@lucide/svelte/icons/sparkles";
   import Bot from "@lucide/svelte/icons/bot";
   import Crosshair from "@lucide/svelte/icons/crosshair";
+  import PencilLine from "@lucide/svelte/icons/pencil-line";
+  import Minus from "@lucide/svelte/icons/minus";
+  import Paintbrush from "@lucide/svelte/icons/paintbrush";
+  import Eraser from "@lucide/svelte/icons/eraser";
   import RectangleHorizontal from "@lucide/svelte/icons/rectangle-horizontal";
   import Spline from "@lucide/svelte/icons/spline";
   import MessageSquare from "@lucide/svelte/icons/message-square";
@@ -47,6 +51,7 @@
     onToggleGallery,
     splitOpen = false,
     onToggleSplit,
+    onBrushOptions,
   }: {
     activeTool?: Tool;
     canUndo?: boolean;
@@ -65,7 +70,27 @@
     onToggleGallery?: () => void;
     splitOpen?: boolean;
     onToggleSplit?: () => void;
+    onBrushOptions?: (opts: {
+      output?: "mask" | "polygon";
+      maskMode?: "instance" | "semantic";
+      erasing?: boolean;
+    }) => void;
   } = $props();
+
+  // Brush options
+  let brushOutput = $state<"mask" | "polygon">("mask");
+  let brushMaskMode = $state<"instance" | "semantic">("instance");
+  let brushErasing = $state(false);
+  function setBrush(p: {
+    output?: "mask" | "polygon";
+    maskMode?: "instance" | "semantic";
+    erasing?: boolean;
+  }) {
+    if (p.output !== undefined) brushOutput = p.output;
+    if (p.maskMode !== undefined) brushMaskMode = p.maskMode;
+    if (p.erasing !== undefined) brushErasing = p.erasing;
+    onBrushOptions?.(p);
+  }
 
   // SAM floating panel state
   let samOpen = $state(false);
@@ -161,7 +186,29 @@
       <Button variant={activeTool === "magnetic" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Magnetic Cursor (5)" onclick={() => onToolChange?.("magnetic")}>
         <Magnet class="h-4 w-4" />
       </Button>
+      <Button variant={activeTool === "pencil" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Pencil — freehand (7); hold Shift = baseline" onclick={() => onToolChange?.("pencil")}>
+        <PencilLine class="h-4 w-4" />
+      </Button>
+      <Button variant={activeTool === "point" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Point (8)" onclick={() => onToolChange?.("point")}>
+        <Crosshair class="h-4 w-4" />
+      </Button>
+      <Button variant={activeTool === "line" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Line (9)" onclick={() => onToolChange?.("line")}>
+        <Minus class="h-4 w-4" />
+      </Button>
+      <Button variant={activeTool === "brush" ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Brush — paint mask (B); Alt = erase; dbl-click / Enter to finish" onclick={() => onToolChange?.("brush")}>
+        <Paintbrush class="h-4 w-4" />
+      </Button>
     </div>
+
+    {#if activeTool === "brush"}
+      <!-- Brush options: output (mask/polygon), mode (instance/semantic), eraser -->
+      <div class="mt-1 flex flex-col gap-0.5">
+        <Button variant={brushOutput === "mask" ? "default" : "ghost"} size="sm" class="h-7 w-8 p-0 text-[9px] font-semibold" title="Brush output: raster mask" onclick={() => setBrush({ output: "mask" })}>MSK</Button>
+        <Button variant={brushOutput === "polygon" ? "default" : "ghost"} size="sm" class="h-7 w-8 p-0 text-[9px] font-semibold" title="Brush output: vector polygon (mask → polygon)" onclick={() => setBrush({ output: "polygon" })}>POLY</Button>
+        <Button variant={brushMaskMode === "semantic" ? "default" : "ghost"} size="sm" class="h-7 w-8 p-0 text-[9px] font-semibold" title="Mask mode: instance (independent) ↔ semantic (one class per pixel)" onclick={() => setBrush({ maskMode: brushMaskMode === "semantic" ? "instance" : "semantic" })}>{brushMaskMode === "semantic" ? "SEM" : "INST"}</Button>
+        <Button variant={brushErasing ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Eraser (or hold Alt)" onclick={() => setBrush({ erasing: !brushErasing })}><Eraser class="h-4 w-4" /></Button>
+      </div>
+    {/if}
 
     <Separator class="my-2 w-6" />
 
