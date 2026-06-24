@@ -1,6 +1,6 @@
 import { Application } from "pixi.js";
-import type { ArrowDataPlugin } from "../ArrowDataPlugin.js";
-import type { Tool as ToolType } from "../types.js";
+import type { ArrowDataPlugin } from "../pixi/ArrowDataPlugin.js";
+import type { Tool as ToolType } from "../pixi/types.js";
 import { RectEditor } from "../editors/RectEditor.js";
 import { PolygonEditor } from "../editors/PolygonEditor.js";
 import { MagneticTool } from "../tools/MagneticTool.js";

@@ -1,7 +1,7 @@
 import type { Application } from "pixi.js";
 import type { ArrowDataPlugin } from "./ArrowDataPlugin.js";
 import type { ImagePlugin } from "./ImagePlugin.js";
-import type { InteractionManager } from "./interaction/InteractionManager.js";
+import type { InteractionManager } from "../interaction/InteractionManager.js";
 
 export interface PixiContext {
   app: Application;

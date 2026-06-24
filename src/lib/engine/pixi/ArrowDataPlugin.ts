@@ -1,7 +1,7 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Table } from "apache-arrow";
 import type { ViewportBounds } from "./types.js";
-import { isAxisAlignedRect, pointInPolygon } from "./interaction/geometry.js";
+import { isAxisAlignedRect, pointInPolygon } from "../interaction/geometry.js";
 
 /** Default color function — consumers can override */
 const DEFAULT_COLOR = 0x8b5cf6; // purple

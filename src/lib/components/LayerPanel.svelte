@@ -15,7 +15,7 @@
     SelectContent,
     SelectItem,
   } from "$lib/components/ui/select/index.js";
-  import { colorToHex, hexToColor } from "$lib/utils/color.js";
+  import { colorToHex, hexToColor } from "$lib/engine";
 
   const KNOWN_STRING_COLUMNS = ["label", "status", "source", "group", "reviewer"];
 

@@ -3,7 +3,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import type { Tool } from "$lib/pixi/types.js";
+  import type { Tool } from "$lib/engine";
   import MousePointer2 from "@lucide/svelte/icons/mouse-pointer-2";
   import Hand from "@lucide/svelte/icons/hand";
   import Square from "@lucide/svelte/icons/square";

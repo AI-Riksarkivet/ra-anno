@@ -7,7 +7,7 @@ import {
   STROKE_COLOR,
   type Tool,
 } from "../interaction/types.js";
-import type { ArrowDataPlugin } from "../ArrowDataPlugin.js";
+import type { ArrowDataPlugin } from "../pixi/ArrowDataPlugin.js";
 
 const MIN_DIST_SQ = 9; // 3px² — minimum squared distance between sampled points
 

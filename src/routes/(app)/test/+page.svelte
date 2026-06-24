@@ -1,9 +1,9 @@
 <script lang="ts">
-  import PixiCanvas from "$lib/pixi/PixiCanvas.svelte";
+  import PixiCanvas from "$lib/svelte/PixiCanvas.svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
-  import { statusColor } from "$lib/utils/color.js";
-  import type { PixiContext } from "$lib/pixi/types.js";
+  import { statusColor } from "$lib/engine";
+  import type { PixiContext } from "$lib/engine";
 
   let zoom = $state(1);
   let panX = $state(0);

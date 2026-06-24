@@ -9,13 +9,13 @@
     SelectItem,
   } from "$lib/components/ui/select/index.js";
   import type { Table } from "apache-arrow";
-  import { statusColor, colorToHex } from "$lib/utils/color.js";
-  import type { AnnotationStatus } from "$lib/types/schemas.js";
+  import { statusColor, colorToHex } from "$lib/engine";
+  import type { AnnotationStatus } from "$lib/engine";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
   import { getContext } from "svelte";
   import { type LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import LayerPanel from "./LayerPanel.svelte";
-  import { isAxisAlignedRect } from "$lib/pixi/interaction/geometry.js";
+  import { isAxisAlignedRect } from "$lib/engine";
 
   const layers = getContext<LayerStore>(LAYER_CTX);
 

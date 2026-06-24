@@ -1,4 +1,4 @@
-import type { AnnotationStatus } from "$lib/types/schemas.js";
+import type { AnnotationStatus } from "../schema.js";
 
 export const STATUS_COLORS: Record<AnnotationStatus, number> = {
   accepted: 0x22c55e, // green

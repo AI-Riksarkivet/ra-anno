@@ -1,21 +1,21 @@
 <script lang="ts">
   import * as Resizable from "$lib/components/ui/resizable/index.js";
-  import PixiCanvas from "$lib/pixi/PixiCanvas.svelte";
+  import PixiCanvas from "$lib/svelte/PixiCanvas.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import DisplayPanel from "$lib/components/DisplayPanel.svelte";
   import ZoomControls from "$lib/components/ZoomControls.svelte";
   import PageGallery from "$lib/components/PageGallery.svelte";
   import AnnotationSidebar from "$lib/components/AnnotationSidebar.svelte";
   import KeyboardShortcuts from "$lib/components/KeyboardShortcuts.svelte";
-  import { statusColor } from "$lib/utils/color.js";
+  import { statusColor } from "$lib/engine";
   import { annotationStore } from "$lib/stores/annotations.svelte.js";
-  import { unionMasks } from "$lib/pixi/maskOps.js";
+  import { unionMasks } from "$lib/engine";
   import { LayerStore, LAYER_CTX } from "$lib/stores/layers.svelte.js";
   import { setContext, untrack } from "svelte";
   import { goto } from "$app/navigation";
-  import type { PixiContext } from "$lib/pixi/types.js";
-  import type { Tool } from "$lib/pixi/types.js";
-  import type { AnnotationStatus } from "$lib/types/schemas.js";
+  import type { PixiContext } from "$lib/engine";
+  import type { Tool } from "$lib/engine";
+  import type { AnnotationStatus } from "$lib/engine";
 
   const { data } = $props();
 
