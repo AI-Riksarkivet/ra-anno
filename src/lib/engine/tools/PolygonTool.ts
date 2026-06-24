@@ -93,6 +93,7 @@ export class PolygonTool implements Tool {
 
   cancel(): void {
     this.preview.clear();
+    this.ctx.requestRender();
     this.points = [];
     this.isClosable = false;
   }
@@ -106,6 +107,7 @@ export class PolygonTool implements Tool {
     const bounds = boundsFromPolygon(pts);
 
     this.preview.clear();
+    this.ctx.requestRender(); // render-on-demand: repaint so the polyline doesn't ghost
     this.points = [];
     this.isClosable = false;
 

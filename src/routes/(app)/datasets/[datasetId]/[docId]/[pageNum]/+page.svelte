@@ -28,6 +28,12 @@
   let panX = $state(0);
   let panY = $state(0);
   let activeTool = $state<Tool>("select");
+  // Brush options mirror the engine (single source of truth) — see handleBrushOptions
+  let brushOpts = $state<{
+    output: "mask" | "polygon";
+    maskMode: "instance" | "semantic";
+    erasing: boolean;
+  }>({ output: "mask", maskMode: "instance", erasing: false });
   let selectedIndex = $state<number | null>(null);
   let selectedSet = $state<ReadonlySet<number>>(new Set());
   let pixiCtx = $state<PixiContext | null>(null);
@@ -72,6 +78,7 @@
 
     // Init mode — view by default, no editing until toggled
     ctx.plugins.interaction.setEditMode(mode === "edit");
+    syncBrushOpts(); // mirror engine brush defaults into the toolbar
 
     // Load page image (from cache if available, else fetch)
     const loadImage = (async () => {
@@ -255,6 +262,13 @@
     erasing?: boolean;
   }) {
     pixiCtx?.plugins.interaction.setBrushOptions(opts);
+    syncBrushOpts();
+  }
+
+  // Pull the engine's current brush options into local state for the toolbar.
+  function syncBrushOpts() {
+    const bo = pixiCtx?.plugins.interaction.brushOptions;
+    if (bo) brushOpts = { output: bo.output, maskMode: bo.maskMode, erasing: bo.erasing };
   }
 
   const currentPageIndex = $derived(data.pages.findIndex((p: { page_num: number }) => p.page_num === data.pageNum));
@@ -470,6 +484,7 @@
     onToggleGallery={() => (galleryOpen = !galleryOpen)}
     splitOpen={false}
     onToggleSplit={() => { /* TODO: native Pixi split view */ }}
+    brushOptions={brushOpts}
     onBrushOptions={handleBrushOptions}
   />
 

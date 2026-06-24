@@ -13,6 +13,8 @@ export class ImagePlugin {
   private dragging = false;
   private lastX = 0;
   private lastY = 0;
+  /** Pointer id captured for the active pan drag, or null when not panning */
+  private panPointerId: number | null = null;
 
   zoom = 1;
   panX = 0;
@@ -21,6 +23,8 @@ export class ImagePlugin {
   imageHeight = 0;
   /** The zoom level at which the image fits the viewport (baseline = 100%) */
   private fitScale = 1;
+  /** Reused across adjustments so we don't leak a filter per call */
+  private colorFilter: ColorMatrixFilter | null = null;
 
   onViewportChange?: (bounds: ViewportBounds) => void;
   canPan?: () => boolean;
@@ -35,7 +39,10 @@ export class ImagePlugin {
   async load(url: string): Promise<void> {
     if (this.sprite) {
       this.app.stage.removeChild(this.sprite);
+      // Destroy the texture/source we are replacing to free GPU memory
+      const old = this.sprite.texture;
       this.sprite.destroy();
+      old.destroy(true);
     }
 
     const img = new Image();
@@ -67,7 +74,10 @@ export class ImagePlugin {
   ): Promise<void> {
     if (this.sprite) {
       this.app.stage.removeChild(this.sprite);
+      // Destroy the texture/source we are replacing to free GPU memory
+      const old = this.sprite.texture;
       this.sprite.destroy();
+      old.destroy(true);
     }
 
     // Ensure we have a proper ArrayBuffer-backed view for the Blob constructor
@@ -128,7 +138,8 @@ export class ImagePlugin {
   destroy(): void {
     this.removeEvents();
     if (this.sprite) {
-      this.sprite.destroy();
+      // Tear down the sprite together with its texture/source to free GPU memory
+      this.sprite.destroy({ texture: true, textureSource: true });
       this.sprite = null;
     }
   }
@@ -150,7 +161,8 @@ export class ImagePlugin {
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
-    this.canvas.addEventListener("pointerleave", this.onPointerUp);
+    // No pointerleave→up shortcut: pointer capture keeps the pan alive
+    // even when the cursor leaves the canvas mid-gesture.
     this.canvas.addEventListener("dblclick", this.onDoubleClick);
   }
 
@@ -159,7 +171,6 @@ export class ImagePlugin {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
-    this.canvas.removeEventListener("pointerleave", this.onPointerUp);
     this.canvas.removeEventListener("dblclick", this.onDoubleClick);
   }
 
@@ -202,6 +213,9 @@ export class ImagePlugin {
     this.lastX = e.clientX;
     this.lastY = e.clientY;
     this.canvas.style.cursor = "grabbing";
+    // Capture so the pan survives the cursor leaving the canvas mid-drag
+    this.panPointerId = e.pointerId;
+    this.canvas.setPointerCapture(e.pointerId);
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -215,10 +229,14 @@ export class ImagePlugin {
     this.applyTransform();
   };
 
-  private onPointerUp = (): void => {
+  private onPointerUp = (e: PointerEvent): void => {
     if (this.dragging) {
       this.dragging = false;
       this.canvas.style.cursor = "default";
+    }
+    if (this.panPointerId !== null) {
+      this.canvas.releasePointerCapture(this.panPointerId);
+      this.panPointerId = null;
     }
   };
 
@@ -235,13 +253,16 @@ export class ImagePlugin {
     if (!this.sprite) return;
 
     // All at defaults (1.0) — remove filter for zero overhead
+    // (keep the cached instance around for reuse on the next non-default call)
     if (brightness === 1 && contrast === 1 && saturation === 1) {
       this.sprite.filters = [];
       this.app.render();
       return;
     }
 
-    const filter = new ColorMatrixFilter();
+    // Lazily create one filter and reconfigure it in place on every call
+    const filter = (this.colorFilter ??= new ColorMatrixFilter());
+    filter.reset();
     filter.brightness(brightness, false);
     filter.contrast(contrast - 1, true); // pixi contrast: 0 = normal, -1 = grey, +1 = high
     filter.saturate(saturation - 1, true); // pixi saturate: 0 = normal, -1 = desaturated

@@ -108,9 +108,6 @@ export class MagneticTool implements Tool {
     none.delete();
 
     this.ready = true;
-    console.log(
-      `[MagneticTool] Detected ${this.keypoints.length} keypoints`,
-    );
   }
 
   get isDrawing(): boolean {
@@ -198,6 +195,7 @@ export class MagneticTool implements Tool {
 
   cancel(): void {
     this.preview.clear();
+    this.ctx.requestRender();
     this.points = [];
     this.isClosable = false;
     this.isSnapped = false;
@@ -212,6 +210,7 @@ export class MagneticTool implements Tool {
 
     const bounds = boundsFromPolygon(this.points);
     this.preview.clear();
+    this.ctx.requestRender(); // render-on-demand: repaint so the polygon doesn't ghost
 
     this.onCommit?.({
       type: "polygon",
@@ -267,5 +266,7 @@ export class MagneticTool implements Tool {
       this.preview.fill({ color: STROKE_COLOR, alpha: 0.2 });
       this.preview.stroke({ color: STROKE_COLOR, width: 2 / scale });
     }
+
+    this.ctx.requestRender();
   }
 }

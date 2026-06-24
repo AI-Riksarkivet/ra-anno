@@ -51,6 +51,7 @@
     onToggleGallery,
     splitOpen = false,
     onToggleSplit,
+    brushOptions = { output: "mask", maskMode: "instance", erasing: false },
     onBrushOptions,
   }: {
     activeTool?: Tool;
@@ -70,6 +71,11 @@
     onToggleGallery?: () => void;
     splitOpen?: boolean;
     onToggleSplit?: () => void;
+    brushOptions?: {
+      output: "mask" | "polygon";
+      maskMode: "instance" | "semantic";
+      erasing: boolean;
+    };
     onBrushOptions?: (opts: {
       output?: "mask" | "polygon";
       maskMode?: "instance" | "semantic";
@@ -77,18 +83,13 @@
     }) => void;
   } = $props();
 
-  // Brush options
-  let brushOutput = $state<"mask" | "polygon">("mask");
-  let brushMaskMode = $state<"instance" | "semantic">("instance");
-  let brushErasing = $state(false);
+  // Brush options live in the engine (single source of truth). The toolbar just
+  // reflects `brushOptions` and forwards changes — no local duplicate state.
   function setBrush(p: {
     output?: "mask" | "polygon";
     maskMode?: "instance" | "semantic";
     erasing?: boolean;
   }) {
-    if (p.output !== undefined) brushOutput = p.output;
-    if (p.maskMode !== undefined) brushMaskMode = p.maskMode;
-    if (p.erasing !== undefined) brushErasing = p.erasing;
     onBrushOptions?.(p);
   }
 
@@ -201,12 +202,15 @@
     </div>
 
     {#if activeTool === "brush"}
-      <!-- Brush options: output (mask/polygon), mode (instance/semantic), eraser -->
-      <div class="mt-1 flex flex-col gap-0.5">
-        <Button variant={brushOutput === "mask" ? "default" : "ghost"} size="sm" class="h-7 w-8 p-0 text-[9px] font-semibold" title="Brush output: raster mask" onclick={() => setBrush({ output: "mask" })}>MSK</Button>
-        <Button variant={brushOutput === "polygon" ? "default" : "ghost"} size="sm" class="h-7 w-8 p-0 text-[9px] font-semibold" title="Brush output: vector polygon (mask → polygon)" onclick={() => setBrush({ output: "polygon" })}>POLY</Button>
-        <Button variant={brushMaskMode === "semantic" ? "default" : "ghost"} size="sm" class="h-7 w-8 p-0 text-[9px] font-semibold" title="Mask mode: instance (independent) ↔ semantic (one class per pixel)" onclick={() => setBrush({ maskMode: brushMaskMode === "semantic" ? "instance" : "semantic" })}>{brushMaskMode === "semantic" ? "SEM" : "INST"}</Button>
-        <Button variant={brushErasing ? "default" : "ghost"} size="sm" class="h-8 w-8 p-0" title="Eraser (or hold Alt)" onclick={() => setBrush({ erasing: !brushErasing })}><Eraser class="h-4 w-4" /></Button>
+      <!-- Brush options: output (mask/polygon), mask mode (instance/semantic), eraser -->
+      <div class="mt-1 flex flex-col items-center gap-0.5">
+        <span class="text-[7px] uppercase tracking-wide text-muted-foreground">out</span>
+        <Button variant={brushOptions.output === "mask" ? "default" : "ghost"} size="sm" class="h-6 w-8 p-0 text-[8px] font-semibold" title="Output = raster mask (paints pixels)" onclick={() => setBrush({ output: "mask" })}>mask</Button>
+        <Button variant={brushOptions.output === "polygon" ? "default" : "ghost"} size="sm" class="h-6 w-8 p-0 text-[8px] font-semibold" title="Output = vector polygon (the painted mask is traced into a polygon outline)" onclick={() => setBrush({ output: "polygon" })}>poly</Button>
+        <span class="mt-0.5 text-[7px] uppercase tracking-wide text-muted-foreground">mode</span>
+        <Button variant={brushOptions.maskMode === "instance" ? "default" : "ghost"} size="sm" class="h-6 w-8 p-0 text-[8px] font-semibold" title="Instance mask — each stroke is its own separate object; masks may overlap" onclick={() => setBrush({ maskMode: "instance" })}>inst</Button>
+        <Button variant={brushOptions.maskMode === "semantic" ? "default" : "ghost"} size="sm" class="h-6 w-8 p-0 text-[8px] font-semibold" title="Semantic mask — one class per pixel; painting overwrites other labels underneath" onclick={() => setBrush({ maskMode: "semantic" })}>sem</Button>
+        <Button variant={brushOptions.erasing ? "default" : "ghost"} size="sm" class="mt-0.5 h-8 w-8 p-0" title="Eraser (or hold Alt) — removes painted pixels" onclick={() => setBrush({ erasing: !brushOptions.erasing })}><Eraser class="h-4 w-4" /></Button>
       </div>
     {/if}
 

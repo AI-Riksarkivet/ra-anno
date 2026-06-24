@@ -340,8 +340,11 @@ export class ArrowDataPlugin {
         this.maskStr[i] = maskCol ? String(maskCol.get(i) ?? "") : "";
       }
 
-      // Table changed — drop cached mask sprites; syncMasks() rebuilds them
-      for (const s of this.maskSprites.values()) s.destroy();
+      // Table changed — drop cached mask sprites; syncMasks() rebuilds them.
+      // Destroy the GPU texture too, or each reload leaks a TextureSource.
+      for (const s of this.maskSprites.values()) {
+        s.destroy({ texture: true, textureSource: true });
+      }
       this.maskSprites.clear();
       this.maskContainer.removeChildren();
 
@@ -562,6 +565,14 @@ export class ArrowDataPlugin {
 
       const existing = this.maskSprites.get(i);
       if (existing) {
+        // Follow geometry overrides (mask moved/resized via the editor).
+        const geo = this.getGeometry(i);
+        existing.position.set(geo.x, geo.y);
+        if (existing.texture && existing.texture.width > 1) {
+          existing.width = geo.w;
+          existing.height = geo.h;
+        }
+        existing.tint = this.colorFn(this.statusStr[i]);
         existing.visible = !this.hiddenMask[i];
         continue;
       }
@@ -569,12 +580,10 @@ export class ArrowDataPlugin {
       const data = this.maskStr[i];
       if (!data || !data.startsWith("data:")) continue;
 
-      const x = this.xArr[i], y = this.yArr[i];
-      const w = this.wArr[i], h = this.hArr[i];
-
       // Placeholder sprite reserved synchronously to avoid duplicate loads
       const sprite = new Sprite();
-      sprite.position.set(x, y);
+      const g0 = this.getGeometry(i);
+      sprite.position.set(g0.x, g0.y);
       sprite.alpha = 0.45;
       sprite.tint = this.colorFn(this.statusStr[i]);
       sprite.visible = !this.hiddenMask[i];
@@ -583,16 +592,28 @@ export class ArrowDataPlugin {
 
       const img = new Image();
       img.onload = () => {
+        // The table may have reloaded while decoding — this sprite could be
+        // destroyed or replaced. Bail before touching it (avoids a crash + a
+        // leaked Texture.from(img) orphaned onto a dead sprite).
+        if (sprite.destroyed || this.maskSprites.get(i) !== sprite) return;
         try {
           sprite.texture = Texture.from(img);
-          sprite.width = w;
-          sprite.height = h;
+          // Re-read geometry on load — it may have been edited meanwhile.
+          const geo = this.getGeometry(i);
+          sprite.position.set(geo.x, geo.y);
+          sprite.width = geo.w;
+          sprite.height = geo.h;
           this.app.render();
         } catch { /* texture decode failed — leave empty */ }
       };
       img.onerror = () => {};
       img.src = data;
     }
+  }
+
+  /** Shape kind for a row ("rectangle"|"polygon"|"point"|"line"|"baseline"|"mask"|...). */
+  getShapeType(index: number): string {
+    return this.shapeTypeStr[index] ?? "";
   }
 
   /** Get geometry for a single annotation — checks dirty overlay first */
@@ -625,7 +646,10 @@ export class ArrowDataPlugin {
   /** Light hover highlight (before clicking) */
   hover(index: number | null): void {
     this.hoverGraphics.clear();
-    if (index === null || !this.table) return;
+    if (index === null || !this.table) {
+      this.app.render(); // render-on-demand: clearing must repaint, else ghost
+      return;
+    }
 
     const geo = this.getGeometry(index);
     if (geo.polygon && geo.polygon.length >= 6) {
@@ -641,7 +665,10 @@ export class ArrowDataPlugin {
   /** Selection highlight */
   highlight(index: number | null): void {
     this.highlightGraphics.clear();
-    if (index === null || !this.table) return;
+    if (index === null || !this.table) {
+      this.app.render(); // render-on-demand: clearing must repaint, else the box ghosts
+      return;
+    }
 
     const geo = this.getGeometry(index);
     if (geo.polygon && geo.polygon.length >= 6) {
@@ -667,7 +694,10 @@ export class ArrowDataPlugin {
   /** Highlight multiple selected annotations */
   highlightSet(indices: ReadonlySet<number>): void {
     this.highlightGraphics.clear();
-    if (!this.table || indices.size === 0) return;
+    if (!this.table || indices.size === 0) {
+      this.app.render(); // render-on-demand: clearing must repaint, else the box ghosts
+      return;
+    }
     for (const index of indices) {
       const geo = this.getGeometry(index);
       if (geo.polygon && geo.polygon.length >= 6) {

@@ -1,5 +1,6 @@
 import { error } from "@sveltejs/kit";
 import { readFile, writeFile } from "node:fs/promises";
+import { safePageId } from "$lib/server/ids";
 import type { RequestHandler } from "./$types";
 
 const MOCK_DIR = "static/mock";
@@ -24,7 +25,8 @@ function versionETag(pageId: string): string {
 
 // GET: return Arrow IPC with version ETag
 export const GET: RequestHandler = async ({ params, url }) => {
-  const path = `${MOCK_DIR}/${params.pageId}.arrow`;
+  const pageId = safePageId(params.pageId);
+  const path = `${MOCK_DIR}/${pageId}.arrow`;
   const chunkSize = Number(url.searchParams.get("chunk") ?? 0);
 
   let ipc: Uint8Array;
@@ -73,8 +75,9 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
 // POST: full table overwrite (fallback)
 export const POST: RequestHandler = async ({ request, params }) => {
+  const pageId = safePageId(params.pageId);
   const body = new Uint8Array(await request.arrayBuffer());
-  const path = `${MOCK_DIR}/${params.pageId}.arrow`;
+  const path = `${MOCK_DIR}/${pageId}.arrow`;
 
   // Persist the full table
   await writeFile(path, body);
@@ -92,7 +95,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 // PATCH: delta update with OCC
 export const PATCH: RequestHandler = async ({ request, params }) => {
-  const path = `${MOCK_DIR}/${params.pageId}.arrow`;
+  const pageId = safePageId(params.pageId);
+  const path = `${MOCK_DIR}/${pageId}.arrow`;
 
   // OCC: check If-Match version
   const ifMatch = request.headers.get("If-Match");

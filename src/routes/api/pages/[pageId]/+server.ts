@@ -1,12 +1,14 @@
 import { error } from "@sveltejs/kit";
 import { readFile } from "node:fs/promises";
+import { safePageId } from "$lib/server/ids";
 import type { RequestHandler } from "./$types";
 
 const MOCK_DIR = "static/mock";
 
 /** GET: return page table (Binary columns for image + thumbnail) */
 export const GET: RequestHandler = async ({ params }) => {
-  const path = `${MOCK_DIR}/${params.pageId}.page.arrow`;
+  const pageId = safePageId(params.pageId);
+  const path = `${MOCK_DIR}/${pageId}.page.arrow`;
 
   let ipc: Uint8Array;
   try {

@@ -54,6 +54,7 @@ export class RectTool implements Tool {
     const r = computeRect(this.originX, this.originY, x, y, shift, ctrl);
 
     this.preview.clear();
+    this.ctx.requestRender(); // render-on-demand: repaint so the rubber-band doesn't ghost
 
     if (r.w * r.h > MIN_AREA) {
       // Store as 4-point polygon — rect is just a polygon with 4 corners
@@ -87,6 +88,7 @@ export class RectTool implements Tool {
 
   cancel(): void {
     this.preview.clear();
+    this.ctx.requestRender();
     this.drawing = false;
   }
 

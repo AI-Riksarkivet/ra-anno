@@ -32,6 +32,10 @@ export * from "./tools/BrushTool.js";
 export * from "./editors/RectEditor.js";
 export * from "./editors/PolygonEditor.js";
 
+// ── Framework-agnostic state stores (plain TS + observer; Svelte binding adapts them) ──
+export * from "./store/AnnotationStore.js";
+export * from "./store/LayerStore.js";
+
 // ── Data model + utilities ──
 export * from "./schema.js";
 export * from "./utils/arrow.js";

@@ -122,6 +122,21 @@ export class InteractionManager {
     return this._toolName;
   }
 
+  /** Current Brush options — the engine is the source of truth; the UI mirrors this. */
+  get brushOptions(): {
+    output: "mask" | "polygon";
+    maskMode: "instance" | "semantic";
+    erasing: boolean;
+    radius: number;
+  } {
+    return {
+      output: this.brushTool.output,
+      maskMode: this.brushTool.maskMode,
+      erasing: this.brushTool.erasing,
+      radius: this.brushTool.radius,
+    };
+  }
+
   setTool(tool: ToolType): void {
     this.activeTool?.cancel();
     this._toolName = tool;
@@ -196,11 +211,24 @@ export class InteractionManager {
     // Attach editor only in edit mode
     if (index !== null && this._editMode) {
       const { x, y, w, h, polygon } = this.arrowPlugin.getGeometry(index);
+      const st = this.arrowPlugin.getShapeType(index);
 
-      if (polygon && polygon.length >= 6 && !isAxisAlignedRect(polygon)) {
+      if (st === "point") {
+        // Points have no resizable geometry — no editor box.
+      } else if (st === "mask") {
+        // Raster masks: a bounding-box editor lets you move/resize (and Delete)
+        // the mask. The sprite follows the geometry override (see syncMasks).
+        this.rectEditor.attach(index, x, y, w, h, null);
+        this.activeEditor = this.rectEditor;
+      } else if (
+        st === "line" || st === "baseline" ||
+        (polygon && polygon.length >= 6 && !isAxisAlignedRect(polygon))
+      ) {
+        // Open polylines + free-form polygons → vertex editor (NOT a rect resize box).
         this.polygonEditor.attach(index, x, y, w, h, polygon);
         this.activeEditor = this.polygonEditor;
       } else {
+        // Axis-aligned rectangles + oriented boxes → rect resize editor.
         this.rectEditor.attach(index, x, y, w, h, null);
         this.activeEditor = this.rectEditor;
       }
@@ -261,6 +289,25 @@ export class InteractionManager {
   }
 
   // --- Private ---
+
+  /** Persist the active editor's geometry to the dirty overlay + re-render. */
+  private persistActiveEditorGeometry(): void {
+    if (this.selectedIndex === null || !this.activeEditor) return;
+    const geo = this.activeEditor.getGeometry();
+    if (!geo) return;
+    this.arrowPlugin.setOverride(this.selectedIndex, {
+      x: geo.x,
+      y: geo.y,
+      w: geo.w,
+      h: geo.h,
+      polygon: geo.polygon ?? [],
+    });
+    // Re-sync the batch renderer to show the updated geometry
+    this.arrowPlugin.sync();
+    // Restore highlight with updated geometry (sync clears it)
+    this.arrowPlugin.highlight(this.selectedIndex);
+    this.onDirtyChange?.(true);
+  }
 
   private createContext(): InteractionContext {
     return {
@@ -335,6 +382,11 @@ export class InteractionManager {
 
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return;
+    // Sync modifiers from the actual event — robust against focus-dependent
+    // keydown handlers (Alt+click vertex-delete, Ctrl+click multi-select, etc.).
+    this.modifiers.shift = e.shiftKey;
+    this.modifiers.ctrl = e.ctrlKey || e.metaKey;
+    this.modifiers.alt = e.altKey;
     const { x, y } = this.worldCoords(e);
 
     // 1. Editor handle drag — with pointer capture for reliable drag
@@ -342,6 +394,16 @@ export class InteractionManager {
       const handle = this.activeEditor.hitTestHandle(x, y);
       if (handle) {
         e.stopImmediatePropagation();
+        // Alt+click a polygon vertex → delete it (needs >3 vertices).
+        if (
+          this.modifiers.alt && handle.type === "vertex" &&
+          this.activeEditor === this.polygonEditor
+        ) {
+          if (this.polygonEditor.deleteVertex(handle.index)) {
+            this.persistActiveEditorGeometry();
+          }
+          return;
+        }
         this.arrowPlugin.highlight(null); // clear stale highlight during drag
         this.canvas.setPointerCapture(e.pointerId);
         this.capturedPointerId = e.pointerId;
@@ -449,23 +511,7 @@ export class InteractionManager {
 
       // Write to dirty overlay — Arrow table NOT rebuilt
       // Table only rebuilds on Save (when we POST to server anyway)
-      if (this.selectedIndex !== null) {
-        const geo = this.activeEditor.getGeometry();
-        if (geo) {
-          this.arrowPlugin.setOverride(this.selectedIndex, {
-            x: geo.x,
-            y: geo.y,
-            w: geo.w,
-            h: geo.h,
-            polygon: geo.polygon ?? [],
-          });
-          // Re-sync the batch renderer to show the updated geometry
-          this.arrowPlugin.sync();
-          // Restore highlight with updated geometry (sync clears it)
-          this.arrowPlugin.highlight(this.selectedIndex);
-          this.onDirtyChange?.(true);
-        }
-      }
+      this.persistActiveEditorGeometry();
       return;
     }
 

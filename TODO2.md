@@ -1,61 +1,83 @@
-# TODO2 — ra-anno (post-migration / draw-tools / schema)
+# TODO2 — ra-anno (engine decoupling / audits / go-native)
 
-Snapshot of remaining work after the 2026-06-23 session. Supersedes the now-stale
-`TODO.md` for current priorities. **No IIIF / no W3C Web Annotation** — Apache Arrow
-is the native model.
+Snapshot after the **2026-06-24** session. Supersedes the 2026-06-23 notes below the line.
+**No IIIF / no W3C Web Annotation** — Apache Arrow is the native model.
 
-## ✅ Done this session
-- **Deno → Bun**: `@sveltejs/adapter-node` (run via `bun ./build/index.js`), `node:fs/promises`
-  in API routes, Deno globals removed, `deno.json`/`deno.lock` deleted, `bun.lock`, `annotorious/` gitignored.
-- **TypeScript 7 RC** all-in: `typescript@7.0.1-rc` + `@typescript/native-preview` + `svelte-check-native`.
-- **All deps → latest**: Vite 8, vite-plugin-svelte 7, `@lucide/svelte` 1, bits-ui, tailwind 4.3, etc.
-  `motion-dom`/`framer-motion` pinned to `12.38.0` via `overrides` (12.41 dropped `activeAnimations`, broke motion-sv).
-- **Schema extended** (X-AnyLabeling-inspired, `src/lib/types/schemas.ts`): `shape_type`, `rotation`,
-  `group_id`, `reading_order`, `difficult`, `links` (kie_linking), `mask` + `ShapeType`/`RelationType`/`REGION_TYPES`.
-  Mock data regenerated.
-- **Draw tools**: Pencil (freehand → DP-simplified polygon/baseline), Point, Line, Brush
-  (RenderTexture paint + eraser) + a **raster mask overlay layer** in `ArrowDataPlugin`.
-- **Brush options**: `maskMode` instance/semantic (same-label union) + **mask→polygon** vectorization
-  (`traceMaskContour` + `simplifyPath`) + Toolbar toggles (MSK/POLY, INST/SEM, Eraser).
+---
 
-## ⚠️ Known caveats
-- **`bun run check` = 20 errors, all route-level `$types`** (`src/routes/*`) — `svelte-kit sync` CLI
-  generates 0 `$types.d.ts` under Kit 2.67 + Vite 8 + svelte-check-native 0.8.7, though `vite build`/dev
-  generate them fine (**build is green**). App-layer tooling quirk; engine code type-checks clean.
-  Revisit when TS7 GAs / svelte-check-native matures.
-- **Semantic mask mode = same-label union only.** Cross-label pixel-exclusivity (subtract painted pixels
-  from other-label masks) deferred — needs a batch mask-rewrite path (do in the store refactor below).
-- No standalone "convert committed mask → polygon" action yet (brush-output toggle covers the create path).
-- New schema fields are **data-only**: not yet surfaced in renderer/editors/sidebar (see below).
+## ✅ Done — 2026-06-24 session
 
-## 🎯 Next — Engine extraction (the keystone, was task #3)
-Turn the editing engine into an installable, framework-agnostic TS package; SvelteKit becomes a thin binding.
-- Carve `src/lib/engine/` (zero `svelte`/`$app`, single barrel `index.ts`).
-- **Decouple `annotations.svelte.ts` (+ layers/undo) from Svelte runes** → plain-TS store + observer/change-events;
-  thin runes adapter in `src/lib/svelte/` (Annotorious `toSvelteStore` pattern). This is what makes it a package.
-- Move pure-TS in: `pixi/*` (minus `PixiCanvas.svelte`), `interaction/*`, `tools/*`, `editors/*`, `geometry`,
-  `types/schemas`, `utils/{arrow,color}`, `maskOps`.
-- **Layered render-engine scope**: viewer mode (no mutation) + editor mode; layers = image · raster overlays
-  (masks/saliency/depth/confidence + shaders) · vector annotations · data-driven highlight/style. Renderer-agnostic (WebGPU+WebGL).
-- Delete dead `src/lib/stores/undo.svelte.ts`.
+### Engine decoupling (the keystone — was task #3)
+- **Phase 1 carve** (`c89429a`): framework-agnostic `src/lib/engine/` (zero `svelte`/`$app`), barrel `index.ts`; `PixiCanvas.svelte` → `src/lib/svelte/`.
+- **Phase 2 store decoupling**: `src/lib/engine/store/{AnnotationStore,LayerStore}.ts` are now plain-TS + an observer (`on`/`emit` "structural"/"field"); `src/lib/stores/*.svelte.ts` are thin runes adapters (tick-bump). Old `undo.svelte.ts` deleted.
+- **Transport injection** (THE packaging blocker, fixed): `AnnotationStore` no longer hardcodes `fetch('/api/annotations/…')`. It takes an injected `AnnotationTransport` (`src/lib/engine/store/transport.ts`); the HTTP impl is `src/lib/stores/httpAnnotationTransport.ts` in the binding. Engine is now genuinely host-agnostic (in-memory / gRPC / **streaming-inference** transports drop in).
 
-## 🗺️ Engine roadmap (HTR data model + perf + AI)
-- **Surface the new schema fields in UI**: oriented-box editor (rotation handle), point/line/baseline editors,
-  relation-drawing (`links`), reading-order panel, region-type (`REGION_TYPES`) dropdown, `difficult` toggle.
-- **HTR structure**: region→line→word hierarchy (`parent_id`) + reading order; text-line = baseline + (auto) mask +
-  transcription. Block model (PaddleOCR-style) preferred over kraken baselines.
-- **Spatial index**: Flatbush over annotation bboxes for picking + culling (replace the O(n) scans).
-- **Model-in-the-loop**: pluggable `InferenceProvider` seam (layout/baseline/SAM/HTR/embeddings; X-AnyLabeling
-  model-zoo + remote-server pattern) → feed the existing prediction→draft→review path; replace the SAM mockup.
-- Undo coalescing (250 ms); finish cross-label semantic mask exclusivity; mask↔polygon convert action.
+### Perf — incremental append (O(appended), not O(total))
+- `appendManyLocal` concats ONE Arrow `RecordBatch` (built from the base schema's exact types — Float32/Dictionary/List preserved) instead of rebuilding the whole table. **Measured: ~1294 ms → ~2 ms** to append into a 100k table; correctness verified (shape_type + base64 mask round-trip). `appendLocal` delegates. Streamed model inference uses the same path.
 
-## 🔭 Later / differentiators
-- Table structure (rows/cols/cells); copy/paste/duplicate + cross-page propagation; minimap/overview;
-  zoom-to-annotation; comments/issues + inter-annotator agreement.
-- **Real persistence backend** (Lance/columnar) replacing the mock in-memory + `static/mock/*.arrow`
-  (the API rebuilds the whole table per PATCH — won't scale).
-- PAGE-XML / ALTO / COCO export — **TBD / your call** (these are HTR-domain formats, NOT W3C/IIIF).
+### Drawing fixes (verified in-app)
+- Brush produces a **real raster mask** (was a polygon "box" — caused by Toolbar↔engine brush-option **desync**; engine is now the single source of truth, Toolbar reflects it via `brushOptions`).
+- Masks are **editable** (bbox editor + sprite follows geometry overrides).
+- **Alt+click deletes a polygon vertex**; modifier state synced from the pointer event.
+- Mask GPU-texture leak + `img.onload`-on-destroyed-sprite race fixed; `hover`/`highlight` render-on-clear (the stale selection "box").
+
+### Security / data integrity
+- **P0 path-traversal** closed on all `[pageId]` API routes (`src/lib/server/ids.ts` `safePageId`).
+- **P0 empty-page schema drop** fixed: empty table now carries all 23 `ANNOTATION_COLUMNS` (was silently dropping `shape_type`/`mask`/`rotation`/… from the first shape on an empty page).
+
+### Misc audit fixes
+- `ImagePlugin`: texture/source destroy on swap+teardown; cached `ColorMatrixFilter`; pointer-capture pan.
+- `Magnetic`/`Scissors` tools: `requestRender` (render-on-demand), removed `console.log`, Douglas-Peucker → shared `simplifyPath`.
+
+---
+
+## 🔬 Two audits run this session (multi-agent, adversarially verified)
+
+### A) TS engine audit — 38 confirmed (2 P0, 15 P1, 21 P2)
+**Done:** both P0s (above) + transport injection + mask leaks/race + render-on-clear + Magnetic/Scissors render + ImagePlugin leaks + ScissorsTool DP-dedup + `encodeURIComponent` + streaming `_loading` finally.
+**Remaining (P1):**
+- `noUncheckedIndexedAccess` OFF → 124 masked OOB/undefined accesses across 11 engine files. Enable + fix.
+- `canUndo`/`canRedo` are **global**, but undo/redo are per-page → make page-scoped (thread `pageId` through adapter + Toolbar).
+- `selectedSet` not cleared on undo/redo/Escape → fold into `cancel()`.
+- per-`pageId` caches/undo stacks **never evicted** → add `dispose(pageId)` on page unmount.
+- `tableFromArrays` widens Float32→Float64 on rematerialize/save (incremental append already preserves it; pin schema on the rematerialize/save path too).
+- ESLint: **no config exists** → add flat `eslint.config.js` + typescript-eslint + svelte plugin; `tsc --noEmit` in CI.
+
+### B) PixiJS-native audit — 72 findings (25 high) — "GO NATIVE"
+We re-rasterize 5 monolithic Graphics on every transform with no culling, bake size-into-geometry (zoom ⇒ full rebuild), run two raw-DOM event stacks, and hand-roll math Pixi shapes already do.
+**Top 5 (impact ÷ effort):**
+1. **Register `CullerPlugin`** (`PixiCanvas.svelte`) — our `cullable=true` is inert (plugin never added); pan never culls. **S.**
+2. **`isRenderGroup` on the annotation container** — GPU pan/zoom transform. **S.**
+3. **`Assets.load({src, parser:'texture'})`** for image + base64 masks (off-main-thread decode + dedup; `parser` handles our extension-less `/api/pages` URLs). **S.**
+4. **`ParticleContainer` for point annotations** (~1/3 of data) — one draw call; constant radius via `scale=1/zoom`. **L.**
+5. **FederatedEvent system** — `stage.eventMode='static'` + `globalpointermove`/`pointerupoutside`; delete the dual DOM stack, `setPointerCapture` bookkeeping, and `getBoundingClientRect`-per-event. **L (incremental).**
+
+**Real bug found:** line/open-polyline annotations have no fill area → only selectable by bbox. Fix with `Polygon.strokeContains`.
+
+**Perf wall (100k):** `cacheAsTexture(true)` on the static layer · spatial tile grid of `isRenderGroup` sub-Containers (a 1-row edit currently rebuilds the whole monolith → the 1.1s freeze) · split `sync()` into geometry-build vs per-frame cull · `onRender` counter-scaling (kill zoom re-sync) · `boundsArea` on the container · **OffscreenCanvas + `WebWorkerAdapter`** (materialize+draw off-thread — the eventual ceiling for streamed inference) · mask atlas/spritesheet.
+
+**Viz moat (the FiftyOne differentiator):** today's "heatmap" is a fake per-row tint. Real: GPU **density field** = one viewport quad `Mesh` + `Shader.from({gl,gpu})` with region centers in a `UniformGroup`/data-Texture → constant cost regardless of N; `FillGradient` saliency; `blendMode:'add'` masks; single-channel mask data-Texture + colormap; native `graphicsContextToSvg` export. Same shader layer is modality-agnostic (runs on a video frame texture).
+
+**Simpler math/events:** `stage.toLocal(event.global)` / `toGlobal` (handles rotation — our scalar transform breaks under oriented boxes) · `Polygon.contains`/`strokeContains` · `Rectangle.contains/intersects/pad` · interactive `eventMode='static'` handles (Pixi does hit-test+hover+cursor) · modifiers off the event · `renderer.events.cursorStyles` · `math-extras`.
+
+**Leave custom:** the Arrow columnar store + transport + RecordBatch append; render-on-demand policy; tool state machines; the overlay/WAL.
+
+---
+
+## 🧱 Package restructure (decided: 2 packages, AFTER the audits)
+`@ra-anno/engine` (all framework-agnostic: arrow + pixi + interaction) + `@ra-anno/svelte` (binding). One npm install; split arrow/pixi later as it grows. **Stay on TS7** (consumed as source via `exports`→`./src/index.ts`, no `composite`/project references). Keep `core`/`canvas` as separate **internal modules** so audio/video later is a file-move, not a rewrite. Fold the god-file decomposition (`InteractionManager`, `ArrowDataPlugin`) into the move.
+
+## 🗺️ Roadmap — HTR + multimodal + inference
+- **Surface new schema fields in UI**: oriented-box (rotation handle), point/line/baseline editors, relations (`links`), reading-order, region-type dropdown, `difficult`.
+- **HTR**: region→line→word hierarchy + reading order; baseline + auto-mask + transcription.
+- **Multimodal** (one Arrow store, modality-discriminated columns + `ModalityViewer` interface): image=Pixi (have) · **video=Pixi `VideoSource` sprite + overlay + DOM timeline** · audio=peaks.js · text=DOM spans. Sequence: image → text+embeddings → audio → video.
+- **Inference streaming at scale** (~1M images): attach ML backends (e.g. NVIDIA **LocateAnything** VLM grounding → boxes/points/masks). Predictions stream back as Arrow RecordBatches → `appendManyLocal` (O(appended)) → progressive render. Next: an `InferenceProvider` abstraction parallel to the transport; render-side culling/ParticleContainer for the volume.
+- **Persistence/data-flow gaps** (from the read/write trace): `X-Deleted-Ids` header overflows on bulk delete (>~500 ids) → move to body; field overlays not materialized into the cached table until save; server ETag versioning is in-memory only; no autosave/WAL checkpoint. Real columnar backend (Lance) replacing `static/mock/*.arrow` (the PATCH rebuilds the whole table).
+
+## ⏳ In flight / next actions
+- **Magnetic + Scissors wiring** (user chose "wire up"): lazy `initWithImage` on first select (8 MB OpenCV) + loading state — paused pending the `assets` finding (use `Assets.load` for the image element).
+- Then: apply the pixi go-native Top 5 + the remaining TS P1s, then the package restructure.
 
 ## ❌ Out of scope (decided)
 - **No IIIF, no W3C Web Annotation model** (Arrow native).
-- Skip: cuboid/3D boxes, video tracking, pose/keypoints, depth, VQA chatbot, in-app training, the COCO model zoo.
+- Skip: cuboid/3D boxes, pose/keypoints, depth, VQA chatbot, in-app training, the COCO model zoo.

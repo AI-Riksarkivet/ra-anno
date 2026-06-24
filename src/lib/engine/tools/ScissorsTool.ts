@@ -1,5 +1,5 @@
 import { Graphics } from "pixi.js";
-import { boundsFromPolygon } from "../interaction/geometry.js";
+import { boundsFromPolygon, simplifyPath } from "../interaction/geometry.js";
 import {
   type CommitShape,
   HANDLE_FILL,
@@ -132,7 +132,7 @@ export class ScissorsTool implements Tool {
     contour.delete();
 
     // Simplify the contour to reduce point count
-    this.nextLeg = this.simplifyPoints(leg, 0.8);
+    this.nextLeg = simplifyPath(leg, 0.8);
 
     // Check snap-to-close
     const allPoints = [...this.lockedPoints, ...this.nextLeg];
@@ -165,6 +165,7 @@ export class ScissorsTool implements Tool {
 
   cancel(): void {
     this.preview.clear();
+    this.ctx.requestRender();
     this.lockedPoints = [];
     this.nextLeg = [];
     this.hasMap = false;
@@ -200,65 +201,6 @@ export class ScissorsTool implements Tool {
     });
   }
 
-  private simplifyPoints(flat: number[], tolerance: number): number[] {
-    // Convert flat [x,y,x,y,...] to [{x,y},...] for simplify-js
-    const points: { x: number; y: number }[] = [];
-    for (let i = 0; i < flat.length; i += 2) {
-      points.push({ x: flat[i], y: flat[i + 1] });
-    }
-
-    // Dynamic import would be cleaner but simplify-js is tiny
-    // For now, use a simple Douglas-Peucker inline
-    if (points.length <= 2) return flat;
-
-    const simplified = this.douglasPeucker(points, tolerance);
-    const result: number[] = [];
-    for (const p of simplified) {
-      result.push(p.x, p.y);
-    }
-    return result;
-  }
-
-  private douglasPeucker(
-    points: { x: number; y: number }[],
-    epsilon: number,
-  ): { x: number; y: number }[] {
-    if (points.length <= 2) return points;
-
-    let maxDist = 0;
-    let maxIdx = 0;
-    const first = points[0];
-    const last = points[points.length - 1];
-
-    for (let i = 1; i < points.length - 1; i++) {
-      const d = this.pointLineDistance(points[i], first, last);
-      if (d > maxDist) {
-        maxDist = d;
-        maxIdx = i;
-      }
-    }
-
-    if (maxDist > epsilon) {
-      const left = this.douglasPeucker(points.slice(0, maxIdx + 1), epsilon);
-      const right = this.douglasPeucker(points.slice(maxIdx), epsilon);
-      return [...left.slice(0, -1), ...right];
-    }
-
-    return [first, last];
-  }
-
-  private pointLineDistance(
-    p: { x: number; y: number },
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-  ): number {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2);
-    return Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / len;
-  }
-
   private renderPreview(): void {
     this.preview.clear();
     const scale = this.ctx.getViewportScale();
@@ -285,5 +227,7 @@ export class ScissorsTool implements Tool {
       this.preview.fill({ color: STROKE_COLOR, alpha: 0.2 });
       this.preview.stroke({ color: STROKE_COLOR, width: 2 / scale });
     }
+
+    this.ctx.requestRender();
   }
 }
